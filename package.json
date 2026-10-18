@@ -1,0 +1,12 @@
+{
+  "name": "lingo-source",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix lingo run dev",
+    "build": "npm --prefix lingo run build",
+    "start": "npm --prefix lingo start",
+    "test:e2e": "npm --prefix lingo run test:e2e",
+    "test:api": "npm --prefix lingo run test:api"
+  }
+}
