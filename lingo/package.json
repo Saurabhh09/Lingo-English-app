@@ -1,0 +1,31 @@
+{
+  "name": "lingo-learning",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "build": "vite build",
+    "start": "NODE_ENV=production node server.mjs",
+    "test:e2e": "node tests/e2e.mjs",
+    "test:api": "node tests/api.mjs",
+    "test:curriculum": "node tests/curriculum.mjs",
+    "test:phase10": "node tests/phase10-lesson-engine.mjs",
+    "test:phase11": "node tests/phase11.mjs",
+    "test:phase1": "node tests/phase1-multiplayer-ui.mjs",
+    "test:phase2": "node tests/phase2-lifecycle.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.99.0",
+    "@vitejs/plugin-react": "latest",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.10",
+    "@playwright/test": "^1.64.0"
+  }
+}

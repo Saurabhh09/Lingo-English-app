@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import {lessons} from '../content.js';
+const root='http://localhost:3000/api';
+async function request(endpoint,body,token,method){const response=await fetch(root+endpoint,{method:method||(body?'POST':'GET'),headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,data:await response.json()};}
+const username='api_'+Date.now();const signup=await request('/auth/signup',{username,name:'API Explorer',password:'TestPassword123'});assert.equal(signup.status,200);const token=signup.data.token;
+assert.equal((await request('/auth/signup',{username:username.toUpperCase(),name:'Different name',password:'Password456'})).status,409);
+assert.equal((await request('/auth/signup',{username:'!!bad',name:'Name',password:'Password456'})).status,400);
+assert.equal((await request('/auth/signup',{username:username+'x',name:'Name',password:'short'})).status,400);
+assert.equal((await request('/auth/login',{username,password:'wrong-password'})).status,401);
+const login=await request('/auth/login',{username,password:'TestPassword123'});assert.equal(login.status,200);
+assert.equal((await request('/me')).status,401);
+assert.equal((await request('/progress/lesson',{lesson:'everyday',answers:[1,0,2,0,1]},token)).status,400);
+const answers=lessons[0].questions.map(q=>q[2]);const lesson=await request('/progress/lesson',{lesson:'hello',answers},token);assert.equal(lesson.status,200);assert.equal(lesson.data.earned,50);assert.equal(lesson.data.progress.words,5);
+const repeat=await request('/progress/lesson',{lesson:'hello',answers},token);assert.equal(repeat.data.earned,0);assert.equal(repeat.data.progress.xp,50);
+assert.equal((await request('/progress/goal',{goal:100},token)).status,400);assert.equal((await request('/progress/word',{word:'MadeUpWord'},token)).status,400);
+const settings={topic:'Grammar',difficulty:'Beginner',duration:1};const created=await request('/games',settings,token);assert.equal(created.status,200);const code=created.data.code;assert.match(code,/^[A-F0-9]{6}$/);assert.equal(created.data.question,null);assert.equal(created.data.questions,undefined);
+const other=await request('/auth/demo',{});const stranger=other.data.token;assert.equal((await request('/games/'+code,null,stranger)).status,404);assert.equal((await request('/games/'+code+'/start',{},stranger)).status,403);assert.equal((await request('/games/join',{code:'ZZZZZZ'},stranger)).status,404);
+assert.equal((await request('/games/join',{code:code.toLowerCase()},stranger)).status,200);const started=await request('/games/'+code+'/start',{},token);assert.equal(started.status,200);assert.equal(started.data.status,'countdown');assert.equal(started.data.question,null);assert.equal(started.data.answer,null);await request('/test/advance-clock',{ms:10000});const playing=await request('/games/'+code,null,token);assert.equal(playing.status,200);assert.equal(playing.data.status,'playing');assert.equal(playing.data.question.correct,undefined);assert.equal(playing.data.answer,null);
+assert.equal((await request('/games/'+code+'/answer',{choice:8,index:0},token)).status,400);assert.equal((await request('/games/'+code+'/answer',{choice:0,index:0},token)).status,200);assert.equal((await request('/games/'+code+'/answer',{choice:1,index:0},token)).status,400);
+await request('/test/reset-clock',{});await request('/games/'+code+'/leave',{},stranger);await request('/games/'+code+'/leave',{},token);
+assert.equal((await request('/auth/logout',{},token)).status,200);assert.equal((await request('/me',null,token)).status,401);
+console.log('PASS API validation: unique usernames, password rules, login/logout, authentication, level locks, one-time XP, invalid goals/words, private rooms, host authorization, invalid codes, hidden answer keys, and duplicate-answer rejection.');

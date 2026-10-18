@@ -1,0 +1,788 @@
+/* Lingo Phase 11 Practice Hub Styles */
+
+.practice-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Practice Banner */
+.practice-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 24px;
+  padding: 32px 36px;
+  background: linear-gradient(135deg, #e4eed6 0%, #d5e6cb 50%, #c2dcb5 100%);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(92, 107, 77, 0.15);
+}
+
+.practice-banner h2 {
+  font-size: 28px;
+  line-height: 1.25;
+  color: #1c2617;
+  margin: 10px 0 8px;
+  font-weight: 700;
+}
+
+.practice-banner p {
+  color: #4a5940;
+  font-size: 15px;
+  margin: 0 0 16px;
+  max-width: 540px;
+}
+
+.practice-stats-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.practice-stats-pills span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  font-size: 13px;
+  font-weight: 600;
+  color: #2d3b26;
+  border: 1px solid rgba(92, 107, 77, 0.15);
+}
+
+/* Practice Tabs Navigation */
+.practice-nav-tabs {
+  display: flex;
+  gap: 10px;
+  background: #f0f2eb;
+  padding: 6px;
+  border-radius: 16px;
+  overflow-x: auto;
+}
+
+.practice-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: none;
+  background: transparent;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #55624d;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.practice-tab-btn:hover {
+  color: #1f2a1b;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.practice-tab-btn.active {
+  background: #ffffff;
+  color: #1b2616;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.practice-tab-badge {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #e1edd8;
+  color: #385028;
+  font-weight: 700;
+}
+
+/* Layout Grid for Practice Modules */
+.practice-grid {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 24px;
+}
+
+@media (max-width: 900px) {
+  .practice-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.practice-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.practice-list-card {
+  background: #ffffff;
+  border: 1px solid #e7ebd9;
+  border-radius: 16px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.practice-list-card:hover {
+  border-color: #9abf7f;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.practice-list-card.selected {
+  border-color: #5d8b3c;
+  background: #f7faf3;
+  box-shadow: 0 2px 10px rgba(93, 139, 60, 0.12);
+}
+
+.practice-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.practice-level-tag {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #edf5e6;
+  color: #406029;
+}
+
+.practice-list-card h4 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e2918;
+  margin: 0;
+}
+
+.practice-list-card p {
+  font-size: 12.5px;
+  color: #65745d;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.practice-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: #7b8a73;
+  margin-top: 4px;
+}
+
+/* Practice Active Panel */
+.practice-panel {
+  background: #ffffff;
+  border: 1px solid #e4e9d6;
+  border-radius: 24px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);
+}
+
+.practice-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #edf1e4;
+}
+
+.practice-panel-header h3 {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1c2617;
+  margin: 4px 0 6px;
+}
+
+.practice-panel-header p {
+  color: #5c6c53;
+  font-size: 14px;
+  margin: 0;
+}
+
+/* Audio Player Component */
+.audio-player-card {
+  background: #f5f8f0;
+  border: 1px solid #e2ebd7;
+  border-radius: 18px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.audio-player-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.audio-play-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: none;
+  background: #2a3d20;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.audio-play-btn:hover:not(:disabled) {
+  background: #3c572e;
+  transform: scale(1.05);
+}
+
+.audio-play-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.audio-track-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.audio-scrubber-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.audio-scrubber {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: #d6e2cb;
+  outline: none;
+  cursor: pointer;
+}
+
+.audio-scrubber::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #2f4523;
+  cursor: pointer;
+}
+
+.audio-time-label {
+  font-size: 12px;
+  font-family: monospace;
+  color: #5d6e53;
+  min-width: 75px;
+  text-align: right;
+}
+
+.audio-speed-btn {
+  border: 1px solid #cedec2;
+  background: #ffffff;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #3b502e;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.audio-speed-btn:hover {
+  background: #edf5e6;
+}
+
+.audio-passage-box {
+  background: #ffffff;
+  border: 1px solid #e1ebdc;
+  border-radius: 12px;
+  padding: 14px 18px;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: #2b3924;
+}
+
+.audio-passage-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #55674b;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-weight: 600;
+}
+
+.audio-passage-toggle:hover {
+  color: #293822;
+  text-decoration: underline;
+}
+
+/* Question List in Listening */
+.listening-questions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.listening-question-card {
+  border: 1px solid #e9ede0;
+  border-radius: 16px;
+  padding: 18px 20px;
+  background: #fafbf8;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.listening-question-card h5 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e2819;
+  margin: 0;
+}
+
+.listening-options-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 600px) {
+  .listening-options-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.listening-option-btn {
+  padding: 12px 14px;
+  border: 1px solid #d9e3d0;
+  border-radius: 12px;
+  background: #ffffff;
+  text-align: left;
+  font-size: 14px;
+  color: #2d3b26;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: all 0.15s ease;
+}
+
+.listening-option-btn:hover:not(:disabled) {
+  border-color: #8bb86c;
+  background: #f7faf3;
+}
+
+.listening-option-btn.selected {
+  border-color: #4b782b;
+  background: #edf5e5;
+  font-weight: 600;
+}
+
+.listening-option-btn.correct {
+  border-color: #488029;
+  background: #e6f5db;
+  color: #244b11;
+  font-weight: 700;
+}
+
+.listening-option-btn.incorrect {
+  border-color: #d8695f;
+  background: #fdf0ee;
+  color: #922219;
+}
+
+.listening-option-key {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: #edf2e8;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #435439;
+  flex-shrink: 0;
+}
+
+/* Voice & Microphone Recorder Component */
+.mic-recorder-card {
+  border: 1.5px dashed #c9d9bc;
+  border-radius: 20px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 16px;
+  background: #fafcf8;
+}
+
+.mic-recorder-card.recording {
+  border-color: #e55745;
+  background: #fff8f7;
+  border-style: solid;
+}
+
+.mic-action-btn {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: none;
+  background: #2a3d20;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  box-shadow: 0 4px 14px rgba(42, 61, 32, 0.2);
+}
+
+.mic-action-btn:hover:not(:disabled) {
+  transform: scale(1.08);
+  background: #3c572e;
+}
+
+.mic-action-btn.active {
+  background: #d84534;
+  animation: pulseMic 1.5s infinite;
+}
+
+@keyframes pulseMic {
+  0% { box-shadow: 0 0 0 0 rgba(216, 69, 52, 0.4); }
+  70% { box-shadow: 0 0 0 16px rgba(216, 69, 52, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(216, 69, 52, 0); }
+}
+
+.mic-status-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #4b5d40;
+}
+
+.mic-transcript-area {
+  width: 100%;
+  min-height: 80px;
+  padding: 12px 14px;
+  border: 1px solid #dbe4d2;
+  border-radius: 12px;
+  background: #ffffff;
+  font-size: 14.5px;
+  color: #26351f;
+  line-height: 1.5;
+  text-align: left;
+  resize: vertical;
+}
+
+/* Pronunciation Diff Card */
+.pron-diff-card {
+  background: #fbfcf9;
+  border: 1px solid #e1ebd9;
+  border-radius: 18px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pron-target-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: #ffffff;
+  border: 1px solid #e4ecdc;
+  border-radius: 14px;
+}
+
+.pron-target-text h4 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1b2615;
+  margin: 0 0 4px;
+}
+
+.pron-target-text span {
+  font-size: 13px;
+  font-family: monospace;
+  color: #65775c;
+}
+
+.pron-words-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px;
+  background: #ffffff;
+  border: 1px solid #e7ede0;
+  border-radius: 14px;
+}
+
+.pron-word-chip {
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pron-word-chip.exact {
+  background: #e2f4d6;
+  color: #2b5516;
+  border: 1px solid #bedfae;
+}
+
+.pron-word-chip.close {
+  background: #fff4d9;
+  color: #79570c;
+  border: 1px solid #f1dda3;
+}
+
+.pron-word-chip.missing {
+  background: #fbe6e3;
+  color: #8c261b;
+  border: 1px solid #f2bdb7;
+}
+
+.pron-score-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-radius: 12px;
+  font-weight: 700;
+}
+
+.pron-score-row.excellent {
+  background: #e6f6dc;
+  color: #2c5916;
+}
+
+.pron-score-row.good {
+  background: #edf7e4;
+  color: #3f6828;
+}
+
+.pron-score-row.needs_practice {
+  background: #fdf2f0;
+  color: #9c2d20;
+}
+
+.pron-disclaimer-note {
+  font-size: 11.5px;
+  color: #728169;
+  font-style: italic;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* AI Conversation Chat Styles */
+.ai-chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 480px;
+  border: 1px solid #e3ead7;
+  border-radius: 20px;
+  background: #fafbf8;
+  overflow: hidden;
+}
+
+.ai-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background: #ffffff;
+  border-bottom: 1px solid #e7ede0;
+}
+
+.ai-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.ai-status-pill.configured {
+  background: #e4f5d8;
+  color: #295315;
+}
+
+.ai-status-pill.unconfigured {
+  background: #fff0d6;
+  color: #805307;
+}
+
+.ai-messages-scroll {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ai-message-bubble {
+  max-width: 80%;
+  padding: 14px 18px;
+  border-radius: 18px;
+  font-size: 14.5px;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-message-bubble.user {
+  align-self: flex-end;
+  background: #2b3e21;
+  color: #ffffff;
+  border-bottom-right-radius: 4px;
+}
+
+.ai-message-bubble.assistant {
+  align-self: flex-start;
+  background: #ffffff;
+  color: #1e2819;
+  border: 1px solid #e4ecdc;
+  border-bottom-left-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.ai-correction-box {
+  background: #fbf5e6;
+  border: 1px solid #efdfb6;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  color: #6d4e08;
+}
+
+.ai-vocab-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.ai-vocab-pill {
+  font-size: 11px;
+  background: #edf5e6;
+  color: #385524;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.ai-chat-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  background: #ffffff;
+  border-top: 1px solid #e7ede0;
+}
+
+.ai-chat-input {
+  flex: 1;
+  border: 1px solid #dce5d3;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 14px;
+  outline: none;
+  background: #fdfefc;
+}
+
+.ai-chat-input:focus {
+  border-color: #72a353;
+  box-shadow: 0 0 0 3px rgba(114, 163, 83, 0.15);
+}
+
+.ai-send-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: none;
+  background: #2c3f22;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ai-send-btn:hover:not(:disabled) {
+  background: #405c31;
+}
+
+.ai-send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ai-scenario-prompts-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 18px;
+  background: #f6f8f2;
+  border-top: 1px solid #ecf1e4;
+}
+
+.ai-scenario-reply-btn {
+  background: #ffffff;
+  border: 1px solid #dce4d3;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  color: #495a3f;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ai-scenario-reply-btn:hover {
+  background: #edf5e5;
+  border-color: #8cb86d;
+  color: #27391f;
+}

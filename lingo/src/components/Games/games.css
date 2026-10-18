@@ -1,0 +1,706 @@
+/* ==========================================================================
+   Lingo Multiplayer — Play & Learn Styles (Phase 1 UI/UX Polish)
+   ========================================================================== */
+
+/* Main Games Page Layout */
+.games-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+}
+
+/* Hero Banner */
+.games-page .game-banner {
+  border-radius: 24px;
+  padding: 36px 40px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 20px rgba(124, 109, 142, 0.08);
+}
+
+.games-page .game-banner h2 {
+  font-size: 36px;
+  line-height: 1.15;
+  letter-spacing: -0.8px;
+  color: #2b2338;
+  margin: 12px 0 10px;
+}
+
+.games-page .game-banner p {
+  color: #6d617d;
+  font-size: 14px;
+  max-width: 440px;
+  line-height: 1.6;
+}
+
+/* Setup Grid: Main (Create + Join) + Sidebar (Guide) */
+.game-setup-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 24px;
+  align-items: start;
+}
+
+.game-setup-main {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Cards (Join Card & Create Card) */
+.join-card,
+.create-card {
+  background: #ffffff;
+  border: 1px solid #e8ecd9;
+  border-radius: 20px;
+  padding: 28px;
+  box-shadow: 0 2px 12px rgba(98, 123, 78, 0.04);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.join-card:focus-within,
+.create-card:focus-within {
+  border-color: #b2c695;
+  box-shadow: 0 4px 20px rgba(98, 123, 78, 0.08);
+}
+
+.section-number {
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  background: #f0f4e8;
+  color: #5c7444;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+/* Join Card Specifics */
+.join-input-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.join-input {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #f7f9f2;
+  border: 1.5px solid #e2e7d6;
+  border-radius: 12px;
+  padding: 4px 18px;
+  transition: all 0.2s ease;
+}
+
+.join-input:focus-within {
+  border-color: #627b4e;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(98, 123, 78, 0.15);
+}
+
+.join-input input {
+  background: transparent;
+  border: none;
+  outline: none;
+  width: 100%;
+  padding: 12px 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: #314424;
+  text-transform: uppercase;
+}
+
+.join-input input::placeholder {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  color: #9aa58c;
+}
+
+.join-code-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6a7c5b;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.join-code-badge.ready {
+  color: #3b7324;
+}
+
+/* Option Groups (Difficulty, Topic, Time) */
+.difficulty-options {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.difficulty-options button {
+  border: 1.5px solid #e8ecde;
+  background: #fafbf7;
+  border-radius: 14px;
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  position: relative;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.difficulty-options button:hover {
+  border-color: #cbd7b6;
+  background: #f4f7ee;
+  transform: translateY(-1px);
+}
+
+.difficulty-options button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(98, 123, 78, 0.25);
+}
+
+.difficulty-options button.selected {
+  background: #eef5e4;
+  border-color: #8da96b;
+  box-shadow: 0 2px 8px rgba(98, 123, 78, 0.1);
+}
+
+.difficulty-options button > span {
+  font-size: 26px;
+}
+
+.difficulty-options button b {
+  font-size: 14px;
+  color: #2c3821;
+}
+
+.difficulty-options button small {
+  font-size: 11px;
+  color: #79856f;
+  line-height: 1.4;
+}
+
+.difficulty-options button > i {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid #d5dcce;
+  display: grid;
+  place-items: center;
+  background: #ffffff;
+  color: transparent;
+  transition: all 0.15s ease;
+}
+
+.difficulty-options button.selected > i {
+  background: #627b4e;
+  border-color: #627b4e;
+  color: #ffffff;
+}
+
+/* Topic Pills */
+.topic-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.topic-options button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1.5px solid #e5e9dc;
+  background: #fafbf7;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #556249;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.topic-options button:hover {
+  border-color: #c4d1b0;
+  background: #f1f6ea;
+}
+
+.topic-options button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(124, 109, 142, 0.25);
+}
+
+.topic-options button.selected {
+  background: #eee8f7;
+  border-color: #b7a4cf;
+  color: #4f3d68;
+  box-shadow: 0 2px 8px rgba(124, 109, 142, 0.12);
+}
+
+/* Time Options */
+.time-options {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.time-options button {
+  border: 1.5px solid #e5e9dc;
+  background: #fafbf7;
+  border-radius: 12px;
+  padding: 12px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #657458;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.time-options button b {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.time-options button:hover {
+  border-color: #ebd78a;
+  background: #fdfaf0;
+}
+
+.time-options button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(226, 212, 144, 0.35);
+}
+
+.time-options button.selected {
+  background: #fbf5d9;
+  border-color: #d1ba56;
+  color: #63531b;
+  box-shadow: 0 2px 8px rgba(209, 186, 86, 0.15);
+}
+
+/* Create Footer & Actions */
+.create-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid #edf0e4;
+}
+
+.create-footer span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #7d8b72;
+}
+
+/* ==========================================================================
+   Waiting Room & Lobby UI
+   ========================================================================== */
+
+.room-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+.room-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 4px;
+}
+
+.room-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 24px;
+}
+
+.room-main {
+  background: #ffffff;
+  border: 1px solid #e8ecd9;
+  border-radius: 20px;
+  padding: 36px 32px;
+  box-shadow: 0 4px 20px rgba(98, 123, 78, 0.04);
+}
+
+.room-waiting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.room-code-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.room-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  background: #f3f6ec;
+  border: 2px dashed #9bc775;
+  border-radius: 16px;
+  padding: 14px 24px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.room-code:hover {
+  background: #e9f0dc;
+  border-color: #7ba855;
+  transform: scale(1.02);
+}
+
+.room-code:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(123, 168, 85, 0.35);
+}
+
+.room-code > span {
+  font-family: monospace, ui-monospace, sans-serif;
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: 8px;
+  color: #344825;
+}
+
+.room-share-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  border: 1.5px solid #d5dec4;
+  border-radius: 12px;
+  padding: 14px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #495a3a;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.room-share-btn:hover {
+  background: #f5f8ef;
+  border-color: #8da96b;
+}
+
+.room-settings-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #fafbf7;
+  border: 1px solid #edf0e4;
+  border-radius: 12px;
+  padding: 8px 18px;
+  margin-bottom: 24px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #66755a;
+}
+
+.room-settings-bar span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ==========================================================================
+   Countdown Lobby Experience
+   ========================================================================== */
+
+.countdown-overlay-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 40px 24px;
+  gap: 16px;
+}
+
+.countdown-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #fbf5d9;
+  border: 1px solid #e5d796;
+  color: #79661f;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.countdown-ring-container {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #eef7e4 0%, #fef8dd 100%);
+  border: 4px solid #9bc775;
+  box-shadow: 0 8px 30px rgba(155, 199, 117, 0.25);
+  display: grid;
+  place-items: center;
+  margin: 16px 0;
+  animation: countdownPulse 1s ease-in-out infinite alternate;
+}
+
+.countdown-number {
+  font-size: 64px;
+  font-weight: 900;
+  color: #2e431d;
+  line-height: 1;
+}
+
+@keyframes countdownPulse {
+  0% { transform: scale(0.96); box-shadow: 0 4px 16px rgba(155, 199, 117, 0.2); }
+  100% { transform: scale(1.04); box-shadow: 0 10px 36px rgba(155, 199, 117, 0.35); }
+}
+
+.countdown-subtext {
+  font-size: 14px;
+  color: #647359;
+  max-width: 360px;
+  line-height: 1.5;
+}
+
+/* ==========================================================================
+   Reusable Player List Presentation Component
+   ========================================================================== */
+
+.player-list-roster {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.player-list-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  background: #fafbf8;
+  border: 1px solid #edf0e6;
+  border-radius: 12px;
+  transition: all 0.15s ease;
+}
+
+.player-list-item:hover {
+  background: #f4f7ee;
+  border-color: #dbe4cb;
+}
+
+.player-list-item.is-me {
+  background: #f4f8ed;
+  border-color: #b7ce9b;
+}
+
+.player-avatar-circle {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.avatar-color-0 { background: #d7eac2; color: #364f1d; }
+.avatar-color-1 { background: #ded8ee; color: #4b3d68; }
+.avatar-color-2 { background: #d5e6ed; color: #234b5c; }
+.avatar-color-3 { background: #fae6c6; color: #6e4b16; }
+
+.player-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.player-meta b {
+  font-size: 14px;
+  color: #27341e;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-you-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: #5d7446;
+  background: #e2eccf;
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+
+.player-status-line {
+  font-size: 11px;
+  color: #7b8871;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.player-badge-host {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #fef4cf;
+  border: 1px solid #e8d585;
+  color: #745f14;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ==========================================================================
+   Finished Game Presentation
+   ========================================================================== */
+
+.finished-game-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 18px;
+}
+
+.finished-game-view .celebration {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  color: #bfa12a;
+  margin-top: 10px;
+}
+
+.result-card-banner {
+  background: linear-gradient(135deg, #f7f9f2 0%, #edf4e4 100%);
+  border: 1.5px solid #c9dcad;
+  border-radius: 18px;
+  padding: 24px;
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.result-score strong {
+  font-size: 52px;
+  font-weight: 900;
+  color: #2e431d;
+  line-height: 1;
+}
+
+.result-score span {
+  font-size: 13px;
+  font-weight: 600;
+  color: #607252;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* ==========================================================================
+   Responsive Breakpoints & Touch Accommodations
+   ========================================================================== */
+
+@media (max-width: 900px) {
+  .game-setup-grid,
+  .room-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .game-setup-main {
+    width: 100%;
+  }
+
+  .game-setup-grid aside,
+  .room-grid aside {
+    order: 2;
+  }
+}
+
+@media (max-width: 600px) {
+  .difficulty-options {
+    grid-template-columns: 1fr;
+  }
+
+  .time-options {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .join-card form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .join-card .button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .room-code-group {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .room-code,
+  .room-share-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+  .countdown-ring-container {
+    animation: none;
+  }
+  .difficulty-options button,
+  .room-code {
+    transition: none;
+  }
+}
