@@ -2,9 +2,13 @@
   "name": "lingo-source",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
+  "workspaces": [
+    "lingo"
+  ],
   "scripts": {
     "dev": "npm --prefix lingo run dev",
-    "build": "npm --prefix lingo run build",
+    "build": "npm --prefix lingo run build && node -e \"import('node:fs').then(fs => { if (fs.existsSync('lingo/dist')) fs.cpSync('lingo/dist', 'dist', { recursive: true }); })\"",
     "start": "npm --prefix lingo start",
     "test:e2e": "npm --prefix lingo run test:e2e",
     "test:api": "npm --prefix lingo run test:api"
