@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import { createClient } from '@supabase/supabase-js';
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -36,7 +35,22 @@ if (fs.existsSync(path.join(root, '.env'))) {
     }
   }
 }
-const app = express(); app.use(express.json({ limit: '20kb' }));
+const app = express();
+app.set('trust proxy', 1);
+app.use(express.json({ limit: '20kb' }));
+app.use((req, res, next) => {
+  if (req.url.includes('/api/index') && req.originalUrl) {
+    req.url = req.originalUrl;
+  }
+  if (!req.url.startsWith('/api')) {
+    if (req.originalUrl && req.originalUrl.startsWith('/api')) {
+      req.url = req.originalUrl;
+    } else {
+      req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
+    }
+  }
+  next();
+});
 const connected = (process.env.NODE_ENV !== 'production' && process.env.ISOLATED_TEST) ? false : !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 const supabase = connected ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } }) : null;
 const dataPath = (process.env.NODE_ENV !== 'production' && process.env.DATA_PATH) ? path.resolve(process.env.DATA_PATH) : path.join(root, 'data.json');
@@ -1213,17 +1227,26 @@ app.use((err, req, res, next) => {
     : 'Internal server error. Please try again.';
   res.status(status).json({ error: message });
 });
-if (process.env.NODE_ENV === 'production' || process.env.ISOLATED_TEST) {
-  app.use(express.static(path.join(root, 'dist')));
-  app.get('/{*path}', (_, res) => res.sendFile(path.join(root, 'dist/index.html')));
-} else {
-  const vite = await createViteServer({ root, server: { middlewareMode: true, allowedHosts: true }, appType: 'spa' });
-  app.use(vite.middlewares);
+const isEntryScript = Boolean(process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]));
+const shouldListen = !process.env.VERCEL && (isEntryScript || process.env.ISOLATED_TEST);
+
+if (shouldListen) {
+  if (process.env.NODE_ENV === 'production' || process.env.ISOLATED_TEST) {
+    app.use(express.static(path.join(root, 'dist')));
+    app.get('/{*path}', (_, res) => res.sendFile(path.join(root, 'dist/index.html')));
+  } else {
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({ root, server: { middlewareMode: true, allowedHosts: true }, appType: 'spa' });
+    app.use(vite.middlewares);
+  }
+  const server = app.listen(process.env.PORT || 3000, '0.0.0.0', () => console.log(`Lingo is ready on port ${process.env.PORT || 3000} • ${connected ? 'Supabase connected' : 'local demo database'}`));
+  const shutdown = () => {
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(1), 5000).unref();
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
-const server = app.listen(process.env.PORT || 3000, '0.0.0.0', () => console.log(`Lingo is ready on port ${process.env.PORT || 3000} • ${connected ? 'Supabase connected' : 'local demo database'}`));
-const shutdown = () => {
-  server.close(() => process.exit(0));
-  setTimeout(() => process.exit(1), 5000).unref();
-};
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+
+export default app;
+export { app };
