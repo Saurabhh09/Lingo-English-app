@@ -135,11 +135,11 @@ assert.equal(playHost.data.endsAt, expectedEndsAt, 'endsAt must equal startedAt 
 console.log('PASS 12: Overall gameplay duration timer begins authoritatively at gameplay start');
 
 // =========================================================================
-// 8. Per-question timer governs question progression
+// 8. Total game timer governs question progression (roundEnd replaced)
 // =========================================================================
-// Initial question has roundEnd = startedAt + 20000
-const initialRoundEnd = playHost.data.roundEnd;
-assert.ok(initialRoundEnd > playHost.data.startedAt, 'roundEnd must be initialized for question 0');
+// Authoritative total game timer endsAt is set, and per-question roundEnd is removed
+assert.ok(playHost.data.endsAt > playHost.data.startedAt, 'endsAt must be initialized for total game timer');
+assert.equal(playHost.data.roundEnd, null, 'roundEnd is removed in favor of total game timer');
 
 // Host answers question 0 correctly
 const answerRes = await request('/games/' + code + '/answer', { choice: 0, index: 0 }, hostToken);
@@ -154,12 +154,18 @@ assert.equal(dupAnswer.status, 400, 'Duplicate answer on same index must be reje
 const guestAns = await request('/games/' + code + '/answer', { choice: 1, index: 0 }, guestToken);
 assert.equal(guestAns.status, 200, 'Guest answer submission failed');
 
-// When all members answered, question advances after short reveal window (2200ms)
+// When all members answered, question does NOT auto-advance without host action
 await request('/test/advance-clock', { ms: 2300 });
-const nextQ = await request('/games/' + code, null, hostToken);
-assert.equal(nextQ.data.status, 'playing', 'Room should remain playing for question 1');
-assert.equal(nextQ.data.index, 1, 'Question must advance to index 1 after all answered');
-console.log('PASS 14 & 15: Per-question timer, answer evaluation, scoring, and progression verified');
+const pollStillQ0 = await request('/games/' + code, null, hostToken);
+assert.equal(pollStillQ0.data.status, 'playing', 'Room should remain playing for question 0');
+assert.equal(pollStillQ0.data.index, 0, 'Question must NOT advance automatically');
+assert.equal(pollStillQ0.data.roundReady, true, 'Round is ready for host progression');
+
+// Host explicitly advances
+const advanceRes = await request('/games/' + code + '/next', {}, hostToken);
+assert.equal(advanceRes.status, 200, 'Host progression must succeed');
+assert.equal(advanceRes.data.index, 1, 'Question must advance to index 1 after host advances');
+console.log('PASS 14 & 15: Answer evaluation, scoring, and host progression verified');
 
 // =========================================================================
 // 9. Game finishes when overall duration expires
@@ -177,6 +183,135 @@ console.log('PASS 13: Game finishes authoritatively when overall duration expire
 const startFinished = await request('/games/' + code + '/start', {}, hostToken);
 assert.equal(startFinished.status, 400, 'Cannot start a game that is already finished');
 console.log('PASS 16: Start requests on finished games properly rejected');
+
+// =========================================================================
+// 11. TESTS A–E & G: Question pool exhaustion in a 1-minute game does NOT finish before endsAt
+// =========================================================================
+console.log('--- RUNNING QUESTION POOL EXHAUSTION TESTS (TESTS A - E & G) ---');
+
+// Reset clock
+await request('/test/reset-clock', {});
+
+// Create a 1-minute game (initial pool sliced to 3 questions)
+const p2HostUsername = 'p2h_' + Date.now();
+const p2GuestUsername = 'p2g_' + Date.now();
+const p2HostSignup = await request('/auth/signup', { username: p2HostUsername, name: 'P2 Host', password: 'TestPassword123' });
+assert.equal(p2HostSignup.status, 200, 'P2 Host signup failed');
+const p2HostToken = p2HostSignup.data.token;
+const p2GuestSignup = await request('/auth/signup', { username: p2GuestUsername, name: 'P2 Guest', password: 'TestPassword123' });
+assert.equal(p2GuestSignup.status, 200, 'P2 Guest signup failed');
+const p2GuestToken = p2GuestSignup.data.token;
+
+const g1Res = await request('/games', { difficulty: 'Beginner', topic: 'Food & drinks', duration: 1 }, p2HostToken);
+assert.equal(g1Res.status, 200);
+const g1Code = g1Res.data.code;
+
+// Guest joins while in WAITING
+const g1Join = await request('/games/join', { code: g1Code }, p2GuestToken);
+assert.equal(g1Join.status, 200);
+
+// Host starts game -> COUNTDOWN (TEST F: 10-second countdown)
+const g1Start = await request('/games/' + g1Code + '/start', {}, p2HostToken);
+assert.equal(g1Start.data.status, 'countdown');
+const g1Deadline = g1Start.data.countdownDeadline;
+const g1ServerTime = g1Start.data.serverTime;
+assert.ok(Math.abs((g1Deadline - g1ServerTime) - 10000) <= 100, 'TEST F: Countdown must be 10 seconds');
+console.log('PASS TEST F: 10-second countdown preserved');
+
+// Advance clock past countdown (10,100ms)
+await request('/test/advance-clock', { ms: 10100 });
+const g1Play = await request('/games/' + g1Code, null, p2HostToken);
+assert.equal(g1Play.data.status, 'playing');
+assert.equal(g1Play.data.index, 0);
+assert.equal(g1Play.data.total, 3, 'Original question pool for 1 min should be 3 questions');
+const g1EndsAt = g1Play.data.endsAt;
+assert.ok(g1EndsAt > g1Play.data.serverTime, 'endsAt must be in future');
+
+// Answer question 0 (both players)
+await request('/games/' + g1Code + '/answer', { choice: 0, index: 0 }, p2HostToken);
+await request('/games/' + g1Code + '/answer', { choice: 0, index: 0 }, p2GuestToken);
+await request('/test/advance-clock', { ms: 2300 });
+
+// Verify question 0 did NOT auto-advance, then players advance to question 1
+const checkQ0 = await request('/games/' + g1Code, null, p2HostToken);
+assert.equal(checkQ0.data.index, 0, 'Question must not auto-advance');
+const advQ1 = await request('/games/' + g1Code + '/next', {}, p2HostToken);
+assert.equal(advQ1.status, 200);
+assert.equal(advQ1.data.index, 1);
+const advQ1Guest = await request('/games/' + g1Code + '/next', {}, p2GuestToken);
+assert.equal(advQ1Guest.status, 200);
+assert.equal(advQ1Guest.data.index, 1);
+
+// Answer question 1 (both players)
+await request('/games/' + g1Code + '/answer', { choice: 1, index: 1 }, p2HostToken);
+await request('/games/' + g1Code + '/answer', { choice: 1, index: 1 }, p2GuestToken);
+await request('/test/advance-clock', { ms: 2300 });
+
+// Verify question 1 did NOT auto-advance, then players advance to question 2
+const checkQ1 = await request('/games/' + g1Code, null, p2HostToken);
+assert.equal(checkQ1.data.index, 1, 'Question must not auto-advance');
+const advQ2 = await request('/games/' + g1Code + '/next', {}, p2HostToken);
+assert.equal(advQ2.status, 200);
+assert.equal(advQ2.data.index, 2);
+const advQ2Guest = await request('/games/' + g1Code + '/next', {}, p2GuestToken);
+assert.equal(advQ2Guest.status, 200);
+assert.equal(advQ2Guest.data.index, 2);
+
+// Answer question 2 (both players answer the last question of the original pool)
+const hAns2 = await request('/games/' + g1Code + '/answer', { choice: 2, index: 2 }, p2HostToken);
+assert.equal(hAns2.status, 200);
+const gAns2 = await request('/games/' + g1Code + '/answer', { choice: 2, index: 2 }, p2GuestToken);
+assert.equal(gAns2.status, 200);
+assert.equal(gAns2.data.status, 'finished', 'Game finishes automatically upon evaluating final question');
+
+// TEST A: Verify room transitions to 'finished' upon completing configured question count (no question replenishment)
+const q3Host = await request('/games/' + g1Code, null, p2HostToken);
+const q3Guest = await request('/games/' + g1Code, null, p2GuestToken);
+
+assert.equal(q3Host.data.status, 'finished', 'TEST A: Game MUST transition to finished when configured questions are completed');
+assert.equal(q3Guest.data.status, 'finished', 'TEST A: Guest must also see game is finished');
+assert.equal(q3Host.data.total, 3, 'TEST A: Total question count must strictly remain 3 (no replenishment)');
+console.log('PASS TEST A: Game finishes authoritatively when configured question count is completed without replenishment');
+
+// TEST B: A finished game cannot advance to another question
+const qAdvance = await request('/games/' + g1Code + '/next', {}, p2HostToken);
+assert.equal(qAdvance.status, 400, 'TEST B: Advanced past final question on finished game must be rejected');
+console.log('PASS TEST B: Advanced past final question correctly rejected with 400');
+
+// TEST D: Shared finished state and results across players
+assert.equal(q3Host.data.status, q3Guest.data.status, 'TEST D: Both players must observe identical finished status');
+assert.ok(q3Host.data.leaderboard, 'TEST D: Leaderboard must be present when game is finished');
+assert.ok(q3Host.data.stats, 'TEST D: Player stats must be present when game is finished');
+console.log('PASS TEST D: Finished state, stats, and leaderboard remain shared and consistent across players');
+
+// TEST E: Reject additional answers after game is finished
+const lateAns = await request('/games/' + g1Code + '/answer', { choice: 0, index: 2 }, p2HostToken);
+assert.equal(lateAns.status, 400, 'TEST E: Answer evaluation on finished game must be rejected');
+console.log('PASS TEST E: Additional answers rejected after game is finished');
+
+// TEST C: Overall deadline expiration finishes game before all questions completed
+const gTimerRes = await request('/games', { difficulty: 'Beginner', topic: 'Vocabulary', duration: 1 }, p2HostToken);
+const gTimerCode = gTimerRes.data.code;
+await request('/games/' + gTimerCode + '/start', {}, p2HostToken);
+await request('/test/advance-clock', { ms: 10100 });
+const gTimerPlay = await request('/games/' + gTimerCode, null, p2HostToken);
+assert.equal(gTimerPlay.data.status, 'playing');
+// Advance clock past 1 minute duration endsAt
+await request('/test/advance-clock', { ms: 61000 });
+const gTimerFinished = await request('/games/' + gTimerCode, null, p2HostToken);
+assert.equal(gTimerFinished.data.status, 'finished', 'TEST C: Game must finish when endsAt deadline is reached');
+console.log('PASS TEST C: Game finishes authoritatively when endsAt deadline is reached before questions completed');
+
+// TEST G: Existing completion rules (Host abandonment)
+const g2Res = await request('/games', { difficulty: 'Beginner', topic: 'Vocabulary', duration: 1 }, p2HostToken);
+const g2Code = g2Res.data.code;
+const g2Leave = await request('/games/' + g2Code + '/leave', {}, p2HostToken);
+assert.equal(g2Leave.status, 200);
+// Attempt to join the abandoned room should be rejected with 400 because g.status transitioned to finished
+const joinAbandoned = await request('/games/join', { code: g2Code }, p2GuestToken);
+assert.equal(joinAbandoned.status, 400, 'TEST G: Joining an abandoned room must be rejected with 400');
+assert.match(joinAbandoned.data.error, /already started|finished/, 'TEST G: Error must indicate room is no longer joinable');
+console.log('PASS TEST G: Host abandonment behavior confirmed (status set to finished upon abandonment)');
 
 // Reset clock
 await request('/test/reset-clock', {});

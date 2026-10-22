@@ -17,7 +17,13 @@ export function WaitingLobby({
   const [copied, setCopied] = useState(false);
   const [shareSuccess, setShareSuccess] = useState(false);
   const host = game.host === user.username;
-  const memberCount = game.members?.length || 0;
+  const allMembers = game.members || [];
+  const activeMembers = allMembers.filter(m => m.role !== 'spectator');
+  const spectatorMembers = allMembers.filter(m => m.role === 'spectator');
+  const activeCount = activeMembers.length;
+  const spectatorCount = spectatorMembers.length;
+  const maxPlayers = game.maxPlayers || 100;
+  const memberCount = allMembers.length;
 
   async function handleCopy() {
     if (copyCode) {
@@ -98,9 +104,31 @@ export function WaitingLobby({
         <span><Clock size={15} />{game.duration} min limit</span>
       </div>
 
+      {/* Host Identity & Participation Preference */}
+      <div
+        className="host-participation-badge"
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '6px',
+          fontSize: '12px',
+          color: '#5b4773',
+          background: '#f6f1fc',
+          border: '1px solid #dfd5ed',
+          borderRadius: '16px',
+          padding: '4px 12px',
+          margin: '10px auto 4px',
+          fontWeight: 600,
+        }}
+      >
+        <span>👑 Host: <strong>{game.members?.find(m => m.username === game.host)?.name || game.host}</strong></span>
+        <span>•</span>
+        <span>{game.hostRole === 'spectator' ? 'Spectating (Observer)' : 'Playing with everyone'}</span>
+      </div>
+
       {/* Lobby Avatars & Quick Count (preserves existing selectors) */}
       <div className="lobby-avatars" aria-hidden="true">
-        {(game.members || []).map((m, i) => (
+        {allMembers.slice(0, 12).map((m, i) => (
           <span
             key={m.username}
             style={{
@@ -110,13 +138,21 @@ export function WaitingLobby({
             {(m.name || m.username || '?').slice(0, 1).toUpperCase()}
           </span>
         ))}
+        {allMembers.length > 12 && (
+          <span style={{ background: '#dce8d3', color: '#3d522a', fontSize: '11px', fontWeight: 700 }}>
+            +{allMembers.length - 12}
+          </span>
+        )}
         <button onClick={handleCopy} aria-label="Copy invite code" type="button">
           <Plus size={20} />
         </button>
       </div>
 
-      {/* Exact player count string required by tests */}
-      <p className="lobby-count">{memberCount} / 8 players in your room</p>
+      {/* Dynamic player count reflecting active players and capacity */}
+      <p className="lobby-count">
+        {activeCount} / {maxPlayers} players in your room
+        {spectatorCount > 0 ? ` (+${spectatorCount} spectator${spectatorCount > 1 ? 's' : ''})` : ''}
+      </p>
 
       {/* Host or Guest Action Area */}
       <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', width: '100%', maxWidth: '340px' }}>
