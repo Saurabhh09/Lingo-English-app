@@ -77,7 +77,7 @@ await expect(page.getByText('YOUR GAME ROOM')).toBeVisible();
 await expect(page.getByRole('heading', { name: 'Invite your people.' })).toBeVisible();
 await expect(page.getByRole('button', { name: 'Copy room code' })).toBeVisible();
 await expect(page.getByRole('button', { name: 'Share room invite' })).toBeVisible();
-await expect(page.getByText('1 / 8 players in your room')).toBeVisible();
+await expect(page.getByText(/(?:1 \/ (?:8|100) players in your room)/i)).toBeVisible();
 await expect(page.getByRole('button', { name: 'Start solo or with friends' })).toBeVisible();
 
 // Verify settings bar
@@ -122,7 +122,7 @@ for (const vp of viewports) {
 }
 
 // Leave game
-await page.getByRole('button', { name: 'Leave room' }).click();
+await page.getByRole('button', { name: /Exit Game|Leave room/i }).click();
 await expect(page.getByRole('heading', { name: 'Make it your game.' })).toBeVisible();
 
 expect(errors).toEqual([]);

@@ -1,10 +1,10 @@
 import React from 'react';
-import { Crown, Sparkles, User, Loader2 } from 'lucide-react';
+import { Crown, Sparkles, User, Loader2, Eye } from 'lucide-react';
 
 /**
  * Reusable PlayerList presentation component for Lingo multiplayer.
  * Deduplicates players by username, handles loading/empty states,
- * and displays host badges and (you) indicators accurately.
+ * and displays host badges, spectator tags, and (you) indicators accurately.
  */
 export function PlayerList({
   members = [],
@@ -42,30 +42,36 @@ export function PlayerList({
     );
   }
 
-  // In playing or finished state, sort by score descending if scores are shown
+  // In playing or finished state, place active players by score descending, spectators at bottom
   const sorted = showScores
-    ? [...dedupedMembers].sort((a, b) => (b.score || 0) - (a.score || 0))
+    ? [...dedupedMembers].sort((a, b) => {
+        if (a.role === 'spectator' && b.role !== 'spectator') return 1;
+        if (b.role === 'spectator' && a.role !== 'spectator') return -1;
+        return (b.score || 0) - (a.score || 0);
+      })
     : dedupedMembers;
+
+  let activePlayerRank = 0;
 
   return (
     <div className="player-list-roster">
       {sorted.map((m, i) => {
         const isHost = m.username === hostUsername;
         const isMe = m.username === currentUsername;
+        const isSpectator = m.role === 'spectator';
+        if (!isSpectator) activePlayerRank++;
+        const rankDisplay = isSpectator ? '👁️' : (activePlayerRank === 1 ? '🏆' : activePlayerRank);
+
         const initial = (m.name || m.username || '?').slice(0, 1).toUpperCase();
         const colorClass = `avatar-color-${i % 4}`;
 
         return (
           <div
-            className={`player-row player-list-item ${isMe ? 'is-me' : ''}`}
+            className={`player-row player-list-item ${isMe ? 'is-me' : ''} ${isSpectator ? 'is-spectator' : ''}`}
             key={m.username}
           >
             <span className="player-rank">
-              {showScores ? (
-                i === 0 ? '🏆' : (i + 1)
-              ) : (
-                <span className="green-dot" />
-              )}
+              {showScores ? rankDisplay : <span className="green-dot" />}
             </span>
 
             <span className={`avatar player-avatar player-avatar-circle ${colorClass} color-${i % 4}`}>
@@ -83,16 +89,45 @@ export function PlayerList({
                     <Crown size={10} /> Host
                   </span>
                 )}
-                {status === 'waiting' && !isHost && 'Ready to play'}
-                {(status === 'starting' || status === 'countdown') && 'Getting ready'}
-                {status === 'playing' && (m.answered ? 'Answer locked in' : 'Thinking…')}
-                {status === 'finished' && (isHost ? '' : 'Completed')}
+                {isSpectator && (
+                  <span
+                    className="player-badge-spectator"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '3px',
+                      background: '#f5f0fb',
+                      color: '#5b4773',
+                      border: '1px solid #d5cae8',
+                      borderRadius: '4px',
+                      padding: '1px 5px',
+                      fontSize: '10px',
+                      fontWeight: 700,
+                    }}
+                  >
+                    <Eye size={10} /> Spectator
+                  </span>
+                )}
+                {!isSpectator && status === 'waiting' && !isHost && 'Ready to play'}
+                {isSpectator && status === 'waiting' && 'Observing match'}
+                {isSpectator && (status === 'starting' || status === 'countdown') && 'Observing match'}
+                {!isSpectator && (status === 'starting' || status === 'countdown') && 'Getting ready'}
+                {isSpectator && status === 'playing' && 'Watching players…'}
+                {!isSpectator && status === 'playing' && (m.completed ? 'Completed' : (m.answered ? 'Answer locked in' : 'Thinking…'))}
+                {status === 'finished' && (isSpectator ? 'Observer' : 'Completed')}
               </span>
             </div>
 
             {showScores && (
-              <strong style={{ fontSize: '15px', color: '#27341e', marginLeft: 'auto' }}>
-                {m.score ?? 0}
+              <strong
+                style={{
+                  fontSize: isSpectator ? '11.5px' : '15px',
+                  color: isSpectator ? '#7a6a8f' : '#27341e',
+                  marginLeft: 'auto',
+                  fontWeight: isSpectator ? 600 : 700,
+                }}
+              >
+                {isSpectator ? 'Watching' : (m.score ?? 0)}
               </strong>
             )}
           </div>

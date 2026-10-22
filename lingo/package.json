@@ -12,7 +12,15 @@
     "test:phase10": "node tests/phase10-lesson-engine.mjs",
     "test:phase11": "node tests/phase11.mjs",
     "test:phase1": "node tests/phase1-multiplayer-ui.mjs",
-    "test:phase2": "node tests/phase2-lifecycle.mjs"
+    "test:phase2": "node tests/phase2-lifecycle.mjs",
+    "test:phase2-config": "node tests/phase2-config-validation.mjs",
+    "test:phase2-ui": "node tests/phase2-game-creation-ui.mjs",
+    "test:phase3": "node tests/phase3-solo-friends.mjs",
+    "test:phase3-ui": "node tests/phase3-solo-friends-ui.mjs",
+    "test:phase3-audit": "node tests/phase3-acceptance.mjs",
+    "test:phase4": "node tests/phase4-llm-questions.mjs",
+    "test:phase5": "node tests/phase5-multiplayer-sync.mjs",
+    "test:phase5-ui": "node tests/phase5-friends-ui.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.0",

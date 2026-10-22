@@ -14,6 +14,13 @@ export function AIConversationTutor({ scenarios = [], api, updateProgress, userC
   const recognitionRef = useRef(null);
 
   const currentScenario = scenarios.find(s => s.id === selectedId) || scenarios[0];
+  const [selectedLevel, setSelectedLevel] = useState(currentScenario?.level || 'B1');
+
+  useEffect(() => {
+    if (currentScenario?.level) {
+      setSelectedLevel(currentScenario.level);
+    }
+  }, [currentScenario?.id]);
 
   useEffect(() => {
     api('/ai/status')
@@ -28,7 +35,8 @@ export function AIConversationTutor({ scenarios = [], api, updateProgress, userC
         role: 'assistant',
         content: currentScenario.starterPrompt,
         grammarCorrection: null,
-        vocabularyTips: []
+        vocabularyTips: [],
+        source: 'starter'
       }
     ]);
     setInput('');
@@ -103,7 +111,6 @@ export function AIConversationTutor({ scenarios = [], api, updateProgress, userC
     if (!aiStatus.configured) {
       // In Guided Practice Mode (AI unconfigured)
       setTimeout(() => {
-        const isLastReply = messages.length >= 5;
         let replyText = 'Thank you for your response! That was very clear.';
         if (currentScenario.id === 'conv_cafe_01') {
           replyText = 'Wonderful choice! That will be ready in just a moment. Would you like anything else with that?';
@@ -123,7 +130,10 @@ export function AIConversationTutor({ scenarios = [], api, updateProgress, userC
             role: 'assistant',
             content: replyText,
             grammarCorrection: null,
-            vocabularyTips: []
+            vocabularyTips: [],
+            source: 'fallback',
+            isFallback: true,
+            fallbackReason: 'Guided practice mode active'
           }
         ]);
         setBusy(false);
@@ -141,7 +151,7 @@ export function AIConversationTutor({ scenarios = [], api, updateProgress, userC
         scenarioId: currentScenario.id,
         userMessage: userMsg,
         history: historyPayload,
-        level: currentScenario.level
+        level: selectedLevel || currentScenario.level || 'B1'
       });
 
       setMessages(prev => [
@@ -150,7 +160,11 @@ export function AIConversationTutor({ scenarios = [], api, updateProgress, userC
           role: 'assistant',
           content: res.reply,
           grammarCorrection: res.grammarCorrection,
-          vocabularyTips: res.vocabularyTips || []
+          vocabularyTips: res.vocabularyTips || [],
+          source: res.source || (res.isFallback ? 'fallback' : 'gemini'),
+          isFallback: Boolean(res.isFallback),
+          fallbackReason: res.fallbackReason || null,
+          model: res.model || null
         }
       ]);
 
@@ -170,7 +184,8 @@ export function AIConversationTutor({ scenarios = [], api, updateProgress, userC
         role: 'assistant',
         content: currentScenario.starterPrompt,
         grammarCorrection: null,
-        vocabularyTips: []
+        vocabularyTips: [],
+        source: 'starter'
       }
     ]);
     setInput('');
@@ -203,7 +218,31 @@ export function AIConversationTutor({ scenarios = [], api, updateProgress, userC
       <section className="practice-panel">
         <div className="practice-panel-header">
           <div>
-            <span className="practice-level-tag">{currentScenario.level}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+              <span className="practice-level-tag">{selectedLevel}</span>
+              <select
+                className="cefr-level-select"
+                value={selectedLevel}
+                onChange={e => setSelectedLevel(e.target.value)}
+                aria-label="Select CEFR proficiency level"
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  padding: '2px 8px',
+                  borderRadius: '6px',
+                  border: '1px solid #c8d9be',
+                  background: '#f2f7ed',
+                  color: '#344e23',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="A1">A1 · Beginner</option>
+                <option value="A2">A2 · Elementary</option>
+                <option value="B1">B1 · Intermediate</option>
+                <option value="B2">B2 · Upper Intermediate</option>
+                <option value="C1">C1 · Advanced</option>
+              </select>
+            </div>
             <h3>{currentScenario.title}</h3>
             <p>Partner: <b>{currentScenario.role}</b> · {currentScenario.scenario}</p>
           </div>
@@ -235,7 +274,23 @@ export function AIConversationTutor({ scenarios = [], api, updateProgress, userC
             {messages.map((m, idx) => (
               <div key={idx} className={`ai-message-bubble ${m.role}`}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
-                  <span>{m.content}</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {m.role === 'assistant' && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {m.source === 'gemini' ? (
+                          <span className="ai-source-badge live">✦ Live Gemini AI</span>
+                        ) : m.source === 'fallback' ? (
+                          <span className="ai-source-badge fallback">Guided Scenario Reply</span>
+                        ) : (
+                          <span className="ai-source-badge scenario">Scenario Starter</span>
+                        )}
+                      </div>
+                    )}
+                    <span>{m.content}</span>
+                    {m.fallbackReason && (
+                      <span className="ai-fallback-note">({m.fallbackReason})</span>
+                    )}
+                  </div>
                   {m.role === 'assistant' && (
                     <button
                       type="button"

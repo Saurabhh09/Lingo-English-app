@@ -23,20 +23,28 @@ create table if not exists public.lingo_games (
   payload jsonb not null,
   created_at timestamptz not null default now()
 );
+create table if not exists public.lingo_solo (
+  id text primary key, -- solo:<username>
+  payload jsonb not null,
+  created_at timestamptz not null default now()
+);
 
 alter table public.lingo_accounts enable row level security;
 alter table public.lingo_sessions enable row level security;
 alter table public.lingo_progress enable row level security;
 alter table public.lingo_games enable row level security;
+alter table public.lingo_solo enable row level security;
 
 -- There are deliberately NO public RLS policies. Only the trusted backend
 -- service role can access records, after application-level authorization.
 revoke all on public.lingo_accounts, public.lingo_sessions,
-  public.lingo_progress, public.lingo_games from anon, authenticated;
+  public.lingo_progress, public.lingo_games, public.lingo_solo from anon, authenticated;
 grant all on public.lingo_accounts, public.lingo_sessions,
-  public.lingo_progress, public.lingo_games to service_role;
+  public.lingo_progress, public.lingo_games, public.lingo_solo to service_role;
 
 create index if not exists lingo_session_expiry
   on public.lingo_sessions ((payload->>'expires'));
 create index if not exists lingo_game_status
   on public.lingo_games ((payload->>'status'));
+create index if not exists lingo_solo_status
+  on public.lingo_solo ((payload->>'status'));
