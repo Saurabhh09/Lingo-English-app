@@ -49,14 +49,18 @@ export function LearningHeader({ progress, activeLevel, activeLevelStats, onOpen
 
         {/* Right Stamp with Level Progress */}
         <div className="learn-banner-progress">
-          <span className="learn-stamp" aria-hidden="true">
-            <GraduationCap size={32} />
-          </span>
-          <strong>
-            {completedLessons}
-            <small>/ {totalActiveLessons}</small>
-          </strong>
-          <span>lessons completed</span>
+          <div className="learn-progress-header-row">
+            <span className="learn-stamp" aria-hidden="true">
+              <GraduationCap size={28} />
+            </span>
+            <div className="learn-progress-stats">
+              <strong>
+                {completedLessons}
+                <small>/ {totalActiveLessons}</small>
+              </strong>
+              <span className="lessons-completed-label">lessons completed</span>
+            </div>
+          </div>
 
           <div className="active-level-progress-meter">
             <div className="meter-label">
