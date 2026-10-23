@@ -108,7 +108,9 @@ export function SoloGameRoom({
               aria-atomic="true"
               aria-label={`Starting in ${secondsLeft} seconds`}
             >
-              <span className="countdown-number">{secondsLeft > 0 ? secondsLeft : 'Start'}</span>
+              <span className={`countdown-number ${secondsLeft <= 0 ? 'is-start' : ''}`}>
+                {secondsLeft > 0 ? secondsLeft : 'Start'}
+              </span>
             </div>
 
             <p className="countdown-subtext">

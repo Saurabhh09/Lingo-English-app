@@ -45,7 +45,7 @@ app.use((req, res, next) => {
   if (!req.url.startsWith('/api')) {
     if (req.originalUrl && req.originalUrl.startsWith('/api')) {
       req.url = req.originalUrl;
-    } else {
+    } else if (process.env.VERCEL) {
       req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
     }
   }
