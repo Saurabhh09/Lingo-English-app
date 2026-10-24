@@ -5,6 +5,10 @@
   flex-direction: column;
   gap: 24px;
   animation: fadeIn 0.3s ease;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
 }
 
 @keyframes fadeIn {
@@ -75,6 +79,8 @@
   -ms-overflow-style: none;
   box-sizing: border-box;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .practice-nav-tabs::-webkit-scrollbar {
@@ -122,11 +128,21 @@
 /* Layout Grid for Practice Modules */
 .practice-grid {
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
   gap: 24px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
 }
 
-@media (max-width: 900px) {
+.practice-grid > * {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 1080px) {
   .practice-grid {
     grid-template-columns: 1fr;
   }
