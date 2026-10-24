@@ -2,6 +2,16 @@ import React from 'react';
 import { CEFR_LEVELS, calculateLevelProgress } from '../../curriculumData.js';
 import { Check, Lock, Sparkles, Layers } from 'lucide-react';
 
+const LEVEL_MASCOTS = {
+  'pre-a1': { icon: '🌱', label: 'Starter Sprout' },
+  'a1': { icon: '🐣', label: 'Curious Chick' },
+  'a2': { icon: '🦊', label: 'Clever Fox' },
+  'b1': { icon: '🐻', label: 'Adventurous Bear' },
+  'b2': { icon: '🦁', label: 'Confident Lion' },
+  'c1': { icon: '🚀', label: 'Rocket Explorer' },
+  'c2': { icon: '👑', label: 'Mastery Crown' },
+};
+
 export function CourseLevelSelector({ activeLevelId, onSelectLevel, userCompleted = [] }) {
   return (
     <div className="course-level-selector" role="tablist" aria-label="CEFR Proficiency Levels">
@@ -17,6 +27,7 @@ export function CourseLevelSelector({ activeLevelId, onSelectLevel, userComplete
           const stats = calculateLevelProgress(level, userCompleted);
           const isActive = level.id === activeLevelId;
           const isCompleted = stats.percentage === 100 && stats.total > 0;
+          const mascot = LEVEL_MASCOTS[level.id] || { icon: '✨', label: 'Level' };
 
           return (
             <button
@@ -29,9 +40,14 @@ export function CourseLevelSelector({ activeLevelId, onSelectLevel, userComplete
               onClick={() => onSelectLevel(level.id)}
             >
               <div className="level-tab-top">
-                <span className={`level-tab-badge ${level.accent}`}>
-                  {level.code}
-                </span>
+                <div className="level-tab-badge-group">
+                  <span className="level-tab-emoji" aria-hidden="true" title={mascot.label}>
+                    {mascot.icon}
+                  </span>
+                  <span className={`level-tab-badge ${level.accent}`}>
+                    {level.code}
+                  </span>
+                </div>
                 {isCompleted ? (
                   <span className="level-tab-check" aria-label="Completed">
                     <Check size={14} />
@@ -56,6 +72,15 @@ export function CourseLevelSelector({ activeLevelId, onSelectLevel, userComplete
                     `${level.sections.length} sections · ${level.estimatedHours}`
                   )}
                 </span>
+                <div className="level-tab-mini-bar" aria-hidden="true">
+                  <div
+                    className="level-tab-mini-progress"
+                    style={{
+                      width: `${stats.percentage || 0}%`,
+                      backgroundColor: stats.percentage === 100 ? '#22c55e' : (isActive ? '#58cc02' : '#94a3b8')
+                    }}
+                  />
+                </div>
               </div>
 
               {isActive && <span className="level-tab-active-bar" />}

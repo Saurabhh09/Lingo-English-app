@@ -3,10 +3,14 @@ import {lessons,questionPool} from '../content.js';
 const browser=await chromium.launch({headless:true});
 const ctx=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion:'reduce'});
 const ctx2=await browser.newContext({viewport:{width:1280,height:900},reducedMotion:'reduce'});
-const p=await ctx.newPage(),friend=await ctx2.newPage();const errors=[];p.on('pageerror',e=>errors.push(e.message));friend.on('pageerror',e=>errors.push(e.message));
+const p=await ctx.newPage(),friend=await ctx2.newPage();const errors=[];p.on('pageerror',e=>errors.push(e.message));friend.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());friend.on('dialog',d=>d.accept());
 const username='test_'+Date.now();
-await p.goto('http://localhost:3000');await expect(p.getByRole('heading',{name:'Dashboard.'})).toBeVisible();
-await p.getByRole('button',{name:'Exploring the demo'}).click();await p.getByLabel('What should we call you?').fill('Sam');await p.getByLabel('Your unique username').fill(username);await p.getByLabel('Create a password').fill('TestPassword123');await p.getByRole('button',{name:'Let’s start my story'}).click();await expect(p.getByText('Hey Sam!')).toBeVisible();
+await p.goto('http://localhost:3000');
+const getStartedBtn = p.getByRole('button', { name: 'Get started' });
+await expect(getStartedBtn).toBeVisible({ timeout: 10000 });
+await getStartedBtn.click();
+await p.getByLabel('What should we call you?').fill('Sam');await p.getByLabel('Your unique username').fill(username);await p.getByLabel('Create a password').fill('TestPassword123');await p.getByRole('button',{name:'Let’s start my story'}).click();await expect(p.getByRole('button',{name:/Sam English explorer/})).toBeVisible();
+await expect(p.getByRole('heading',{name:'Dashboard.'})).toBeVisible();
 console.log('PASS username-only signup');
 await p.getByRole('button',{name:'Let’s learn',exact:true}).click();
 await p.getByRole('button',{name:/LEVEL 01/}).click();
@@ -21,7 +25,17 @@ if (await dur1Radio.isVisible()) { await dur1Radio.click(); }
 const qCustomRadio = p.getByRole('radio',{name:'Custom question count'});
 if (await qCustomRadio.isVisible()) { await qCustomRadio.click(); await p.locator('#custom-question-input').fill('3'); }
 await p.getByRole('button',{name:'Create a game',exact:true}).click();await expect(p.locator('.room-code')).toBeVisible();const code=(await p.locator('.room-code>span').textContent()).trim();await expect(p.getByText(/(?:1 \/ (?:8|100) players in your room)/)).toBeVisible();
-await friend.goto('http://localhost:3000');await friend.getByRole('button',{name:'Play & learn',exact:true}).click();await friend.getByLabel('Game code').fill(code);await friend.getByRole('button',{name:'Join game',exact:true}).click();await expect(friend.getByText(/(?:2 \/ (?:8|100) players in your room)/)).toBeVisible();await expect(p.getByText(/(?:2 \/ (?:8|100) players in your room)/)).toBeVisible();await p.getByRole('button',{name:'Let’s play!'}).click();await expect(friend.getByText('GETTING READY · GAME STARTING')).toBeVisible();await expect(friend.locator('.question-prompt')).toBeVisible({timeout:16000});console.log('PASS cross-browser lobby, joining by code, and host start');
+await friend.goto('http://localhost:3000');
+const fGetStarted = friend.getByRole('button', { name: 'Get started' });
+await expect(fGetStarted).toBeVisible({ timeout: 10000 });
+await fGetStarted.click();
+const friendUser = 'friend_' + Date.now();
+await friend.getByLabel('What should we call you?').fill('Alex');
+await friend.getByLabel('Your unique username').fill(friendUser);
+await friend.getByLabel('Create a password').fill('TestPassword123');
+await friend.getByRole('button', { name: 'Let’s start my story' }).click();
+await expect(friend.getByRole('button', { name: /Alex English explorer/ })).toBeVisible({ timeout: 10000 });
+await friend.getByRole('button',{name:'Play & learn',exact:true}).click();await friend.getByLabel('Game code').fill(code);await friend.getByRole('button',{name:'Join game',exact:true}).click();await expect(friend.getByText(/(?:2 \/ (?:8|100) players in your room)/)).toBeVisible();await expect(p.getByText(/(?:2 \/ (?:8|100) players in your room)/)).toBeVisible();await p.getByRole('button',{name:'Let’s play!'}).click();await expect(friend.getByText('GETTING READY · GAME STARTING')).toBeVisible();await expect(friend.locator('.question-prompt')).toBeVisible({timeout:16000});console.log('PASS cross-browser lobby, joining by code, and host start');
 const pool=questionPool('Mixed English','Beginner');for(let round=0;round<3;round++){await expect(p.getByText(`QUESTION ${round+1} OF 3`)).toBeVisible();await expect(friend.getByText(`QUESTION ${round+1} OF 3`)).toBeVisible();const prompt=await p.locator('.question-prompt').textContent();const answer=pool.find(q=>q[0]===prompt)?.[2] ?? 0;await p.locator('.answer-options button').nth(answer).click();await friend.locator('.answer-options button').nth((answer+1)%4).click();const pSub=p.getByRole('button',{name:/Submit Answer/i});if(await pSub.isVisible())await pSub.click();const fSub=friend.getByRole('button',{name:/Submit Answer/i});if(await fSub.isVisible())await fSub.click();if(round<2){await expect(p.getByText('A little win! Nicely done.')).toBeVisible();await expect(friend.getByText('A little lesson. You’ve got the next one.')).toBeVisible();const pNext=p.getByRole('button',{name:/Next Question/i});if(await pNext.isVisible())await pNext.click();const fNext=friend.getByRole('button',{name:/Next Question/i});if(await fNext.isVisible())await fNext.click();}}
 await expect(p.getByRole('heading',{name:'That was a little brilliant.'})).toBeVisible({timeout:10000});await expect(friend.getByRole('heading',{name:'That was a little brilliant.'})).toBeVisible();await expect(p.locator('.result-score strong')).not.toHaveText('0');await expect(friend.locator('.result-score strong')).toHaveText('0');console.log('PASS timed questions, server scores, synchronized progression, and final leaderboard');
 await p.locator('.exit-game-btn').first().click();await expect(p.getByRole('button',{name:'Create a game',exact:true})).toBeVisible();

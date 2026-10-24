@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   LogOut,
 } from 'lucide-react';
+import { Mascot } from '../../Art.jsx';
 
 /**
  * SoloGameRoom: Dedicated, self-contained flow for Solo Mode gameplay.
@@ -130,11 +131,11 @@ export function SoloGameRoom({
             </span>
           </section>
         ) : game.status === 'playing' ? (
-          <section className="room-main panel">
+          <section className="room-main panel gameplay-card">
             <div className="quiz-topline">
               <span className="eyebrow">QUESTION {game.index + 1} OF {game.total}</span>
               <span className={`quiz-timer ${totalRemainingSeconds <= 30 ? 'urgent' : ''}`}>
-                <Clock size={17} />{formattedTime}
+                <Clock size={16} /> {formattedTime}
               </span>
             </div>
 
@@ -142,11 +143,25 @@ export function SoloGameRoom({
               <i style={{ width: `${((game.index + 1) / game.total) * 100}%` }} />
             </div>
 
-            <div className="question-category">
-              <span>✨</span> {game.topic} · {game.difficulty}
-            </div>
+            <div className="gameplay-prompt-area">
+              <div className="question-category">
+                <span>✨</span> {game.topic} · {game.difficulty}
+              </div>
 
-            <h2 className="question-prompt">{game.question?.prompt}</h2>
+              <div className="gameplay-mascot-container" aria-hidden="true">
+                <Mascot
+                  pose={
+                    game.answer
+                      ? (game.answer.isCorrect || game.answer.selected === game.answer.correct ? 'celebrate' : 'cheer')
+                      : 'listen'
+                  }
+                  size={80}
+                  className="gameplay-mascot"
+                />
+              </div>
+
+              <h2 className="question-prompt">{game.question?.prompt}</h2>
+            </div>
 
             <div className="answer-options">
               {(game.question?.options || []).map((o, i) => {
@@ -169,8 +184,8 @@ export function SoloGameRoom({
                     className={btnClass}
                   >
                     <span>{String.fromCharCode(65 + i)}</span>
-                    {o}
-                    {game.answer && i === game.answer.correct && <Check size={19} />}
+                    <span className="option-text">{o}</span>
+                    {game.answer && i === game.answer.correct && <Check size={20} className="option-check-icon" />}
                   </button>
                 );
               })}

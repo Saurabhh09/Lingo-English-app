@@ -55,17 +55,145 @@
 .join-card,
 .create-card {
   background: #ffffff;
-  border: 1px solid #e8ecd9;
-  border-radius: 20px;
-  padding: 28px;
-  box-shadow: 0 2px 12px rgba(98, 123, 78, 0.04);
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  border: 2px solid #e2e8f0;
+  border-bottom: 4px solid #cbd5e1;
+  border-radius: 22px;
+  padding: 30px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
 
 .join-card:focus-within,
 .create-card:focus-within {
-  border-color: #b2c695;
-  box-shadow: 0 4px 20px rgba(98, 123, 78, 0.08);
+  border-color: #94a3b8;
+  border-bottom-color: #64748b;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+}
+
+/* Sidebar Guide & How-To Card (The Yellow Information Panel) */
+.game-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+.howto-card {
+  background: #fffdf0;
+  border: 2px solid #fef08a;
+  border-bottom: 4px solid #fde047;
+  border-radius: 22px;
+  padding: 26px 28px;
+  position: relative;
+  box-shadow: 0 4px 16px rgba(254, 224, 71, 0.12);
+}
+
+.howto-card .howto-icon {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  font-size: 20px;
+  color: #ca8a04;
+}
+
+.howto-card .eyebrow {
+  color: #854d0e;
+  font-weight: 800;
+  font-size: 10.5px;
+  letter-spacing: 1px;
+}
+
+.howto-card h2 {
+  font-size: 24px;
+  font-weight: 800;
+  color: #713f12;
+  margin: 8px 0 20px;
+  line-height: 1.25;
+}
+
+.howto-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.howto-step > span {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #fef08a;
+  color: #854d0e;
+  font-weight: 800;
+  font-size: 14px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border: 2px solid #fde047;
+}
+
+.howto-step div {
+  flex: 1;
+}
+
+.howto-step h3 {
+  font-size: 15px;
+  font-weight: 800;
+  color: #451a03;
+  margin: 0 0 4px;
+}
+
+.howto-step p {
+  font-size: 13px;
+  color: #78350f;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.howto-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: rgba(254, 240, 138, 0.6);
+  border: 1px solid rgba(253, 224, 71, 0.8);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 12px;
+  color: #713f12;
+  margin-top: 18px;
+}
+
+.game-tip {
+  background: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-bottom: 4px solid #cbd5e1;
+  border-radius: 18px;
+  padding: 18px 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.game-tip span {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.game-tip p {
+  margin: 0;
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.game-tip b {
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  color: #0f172a;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
 }
 
 .section-number {
@@ -82,11 +210,18 @@
 }
 
 /* Join Card Specifics */
+.join-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: flex-start;
+}
+
 .join-input-wrapper {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  flex: 1;
+  width: 100%;
 }
 
 .join-input {
@@ -1305,7 +1440,13 @@
    Responsive Breakpoints & Touch Accommodations
    ========================================================================== */
 
-@media (max-width: 900px) {
+.game-setup-grid > *,
+.room-grid > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 1080px) {
 
   .game-setup-grid,
   .room-grid {
@@ -1429,54 +1570,362 @@
 /* --------------------------------------------------------------------------
    PHASE 5: Gameplay, Selection, Submission & Results Styles
    -------------------------------------------------------------------------- */
-.answer-options button.selected {
-  border-color: #6d8e52 !important;
-  background: #f1f7e9 !important;
-  box-shadow: 0 0 0 2px rgba(109, 142, 82, 0.25) !important;
-  font-weight: 600;
+.gameplay-card {
+  background: #ffffff;
+  border: 2px solid #e2e8f0;
+  border-bottom: 4px solid #cbd5e1;
+  border-radius: 24px;
+  padding: 32px 36px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
 }
 
-.answer-options button.selected>span {
-  background: #6d8e52 !important;
+.quiz-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.quiz-topline .eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #64748b;
+  margin: 0;
+}
+
+.quiz-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f1f5f9;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #0f172a;
+  transition: all 0.2s ease;
+}
+
+.quiz-timer.urgent {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+  animation: urgentTimerPulse 1.4s infinite;
+}
+
+@keyframes urgentTimerPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+  100% { transform: scale(1); }
+}
+
+.quiz-progress {
+  height: 8px;
+  background: #f1f5f9;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.quiz-progress i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #58cc02 0%, #22c55e 100%);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.gameplay-prompt-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.question-category {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #eff6ff;
+  border: 1.5px solid #bfdbfe;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 4px 12px;
+  border-radius: 10px;
+  margin-bottom: 14px;
+}
+
+.gameplay-mascot-container {
+  display: flex;
+  justify-content: center;
+  margin: 4px 0 12px;
+}
+
+.question-prompt {
+  font-size: clamp(20px, 4vw, 26px);
+  font-weight: 800;
+  line-height: 1.35;
+  color: #0f172a;
+  margin: 0;
+  letter-spacing: -0.4px;
+  max-width: 620px;
+}
+
+/* ==========================================================================
+   Answer Options: Interactive Cards / Pills (2x2 or responsive stacked)
+   ========================================================================== */
+.answer-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin: 24px 0;
+  width: 100%;
+}
+
+.answer-options button {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  min-height: 64px;
+  background: #ffffff;
+  border: 2px solid #e2e8f0;
+  border-bottom: 4px solid #cbd5e1;
+  border-radius: 18px;
+  font-size: 15.5px;
+  font-weight: 700;
+  color: #1e293b;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.2, 0.8, 0.3, 1);
+  position: relative;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.answer-options button:hover:not(:disabled) {
+  border-color: #3b82f6;
+  border-bottom-color: #2563eb;
+  background: #f8faff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.12);
+}
+
+.answer-options button:active:not(:disabled) {
+  transform: translateY(2px);
+  border-bottom-width: 2px;
+}
+
+.answer-options button > span:first-child {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #f1f5f9;
+  border: 1.5px solid #e2e8f0;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.answer-options button .option-text {
+  flex: 1;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.answer-options button .option-check-icon {
+  color: #16a34a;
+  flex-shrink: 0;
+}
+
+/* Selected State */
+.answer-options button.selected {
+  border-color: #3b82f6 !important;
+  border-bottom: 4px solid #2563eb !important;
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25) !important;
+  transform: translateY(-1px);
+}
+
+.answer-options button.selected > span:first-child {
+  background: #3b82f6 !important;
   color: #ffffff !important;
-  border-color: #6d8e52 !important;
+  border-color: #2563eb !important;
+}
+
+/* Correct Answer State */
+.answer-options button.correct {
+  border-color: #22c55e !important;
+  border-bottom: 4px solid #16a34a !important;
+  background: #f0fdf4 !important;
+  color: #15803d !important;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25) !important;
+}
+
+.answer-options button.correct > span:first-child {
+  background: #22c55e !important;
+  color: #ffffff !important;
+  border-color: #16a34a !important;
+}
+
+/* Incorrect Answer State */
+.answer-options button.incorrect {
+  border-color: #ef4444 !important;
+  border-bottom: 4px solid #dc2626 !important;
+  background: #fef2f2 !important;
+  color: #b91c1c !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.25) !important;
+}
+
+.answer-options button.incorrect > span:first-child {
+  background: #ef4444 !important;
+  color: #ffffff !important;
+  border-color: #dc2626 !important;
+}
+
+.answer-options button.muted-answer {
+  opacity: 0.55;
+  border-color: #e2e8f0;
+}
+
+/* Submission Tray */
+.answer-submit-bar {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .submit-answer-btn {
-  background: #6d8e52 !important;
+  background: #58cc02 !important;
   color: #ffffff !important;
-  font-weight: 600;
-  border-radius: 10px;
-  padding: 11px 22px;
+  font-size: 16px;
+  font-weight: 800;
+  border: none !important;
+  border-bottom: 4px solid #46a302 !important;
+  border-radius: 16px;
+  padding: 14px 32px;
+  min-height: 52px;
+  box-shadow: 0 4px 14px rgba(88, 204, 2, 0.2);
+  cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .submit-answer-btn:hover:not(:disabled) {
-  background: #5b7943 !important;
-  transform: translateY(-1px);
+  background: #61e002 !important;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(88, 204, 2, 0.3);
+}
+
+.submit-answer-btn:active:not(:disabled) {
+  transform: translateY(2px);
+  border-bottom-width: 2px !important;
 }
 
 .submit-answer-btn:disabled {
-  opacity: 0.55;
+  background: #e2e8f0 !important;
+  color: #94a3b8 !important;
+  border-bottom: 4px solid #cbd5e1 !important;
   cursor: not-allowed;
+  box-shadow: none;
+  opacity: 0.7;
+}
+
+.quiz-bottom-hint {
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+/* Answer Feedback Card */
+.answer-feedback {
+  margin-top: 20px;
+  border-radius: 18px;
+  padding: 20px 24px;
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.answer-feedback.positive {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  border-bottom: 4px solid #86efac;
+}
+
+.answer-feedback.positive b {
+  color: #15803d;
+  font-size: 16px;
+}
+
+.answer-feedback.negative {
+  background: #fef2f2;
+  border-color: #fecaca;
+  border-bottom: 4px solid #fca5a5;
+}
+
+.answer-feedback.negative b {
+  color: #b91c1c;
+  font-size: 16px;
+}
+
+.answer-feedback p {
+  margin: 8px 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #334155;
 }
 
 .next-question-btn {
-  font-weight: 600;
-  border-radius: 9px;
+  background: #0f172a !important;
+  color: #ffffff !important;
+  font-size: 14px;
+  font-weight: 800;
+  border: none !important;
+  border-bottom: 3px solid #000000 !important;
+  border-radius: 12px;
+  padding: 10px 20px;
+  cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .next-question-btn:hover:not(:disabled) {
+  background: #1e293b !important;
   transform: translateY(-1px);
 }
 
-.results-stats-grid .stat-pill {
-  transition: transform 0.15s ease;
+.next-question-btn:active:not(:disabled) {
+  transform: translateY(2px);
+  border-bottom-width: 1px !important;
 }
 
-.results-stats-grid .stat-pill:hover {
-  transform: translateY(-1px);
+/* Solo Sidebar & Room Leaderboard */
+.solo-sidebar,
+.room-leaderboard {
+  background: #ffffff;
+  border: 2px solid #e2e8f0;
+  border-bottom: 4px solid #cbd5e1;
+  border-radius: 22px;
+  padding: 24px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+}
+
+.solo-stats-list > div {
+  background: #f8fafc !important;
+  border: 1.5px solid #e2e8f0 !important;
+  border-radius: 14px !important;
+  padding: 14px 16px !important;
 }
 
 /* ==========================================================================
