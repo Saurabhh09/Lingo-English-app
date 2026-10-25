@@ -1366,16 +1366,31 @@ main {
 .exercise-prompt-wrap {
   margin-bottom: 20px;
 }
+.exercise-category-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--duo-green-dark);
+  background: var(--duo-green-light);
+  padding: 4px 10px;
+  border-radius: 999px;
+  margin-bottom: 8px;
+}
 .exercise-prompt-title {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 900;
   color: var(--ink);
   letter-spacing: -0.5px;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+  line-height: 1.3;
 }
 .exercise-prompt-sub {
   font-size: 13px;
   color: var(--muted);
+  line-height: 1.4;
 }
 
 /* Audio & Mascot Prompt Area */
@@ -1396,8 +1411,8 @@ main {
 }
 
 .exercise-speaker-btn {
-  width: 60px;
-  height: 60px;
+  width: 58px;
+  height: 58px;
   border-radius: 50%;
   background: var(--duo-green);
   border: 0;
@@ -1408,6 +1423,7 @@ main {
   cursor: pointer;
   box-shadow: 0 4px 14px rgba(88, 204, 2, 0.3);
   transition: all 0.15s;
+  flex-shrink: 0;
 }
 .exercise-speaker-btn:hover {
   background: #61e002;
@@ -1415,6 +1431,32 @@ main {
 .exercise-speaker-btn:active {
   transform: translateY(2px);
   border-bottom-width: 2px;
+}
+
+.exercise-audio-prompt-box {
+  background: #ffffff;
+  border: 2px solid var(--border);
+  border-radius: 18px;
+  padding: 12px 16px;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.exercise-prompt-quote {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+.exercise-audio-hint {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
 }
 
 .exercise-speech-bubble {
@@ -1728,19 +1770,30 @@ main {
     display: none;
   }
   .continue-learning-card {
-    flex-direction: column-reverse;
-    align-items: flex-start;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
     padding: 20px 18px;
-    gap: 12px;
+    gap: 14px;
+  }
+  .continue-card-body {
+    flex: 1;
+    min-width: 0;
   }
   .continue-mascot-read {
-    align-self: flex-end;
-    margin-top: -8px;
-    margin-bottom: -4px;
+    align-self: center;
+    flex-shrink: 0;
+    margin: 0;
+  }
+  .continue-mascot-read svg {
+    width: 76px !important;
+    height: 76px !important;
   }
   .continue-btn {
-    width: 100%;
-    justify-content: center;
+    width: auto;
+    max-width: 100%;
+    padding: 10px 16px;
+    font-size: 13px;
   }
   .modal-overlay {
     padding: 12px;
@@ -2243,4 +2296,349 @@ main {
 
 .goal-options button.selected strong {
   color: var(--duo-green-dark);
+}
+
+/* ==========================================================================
+   Global Mascot Rendering Safety
+   ========================================================================== */
+.lingo-mascot {
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  display: block;
+}
+
+/* ==========================================================================
+   Main Shared Application Footer
+   ========================================================================== */
+.main-footer {
+  margin-top: 48px;
+  padding: 24px 0 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+  width: 100%;
+}
+
+.main-footer-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  color: #3d4a34;
+}
+
+.footer-sprout-icon {
+  font-size: 16px;
+}
+
+.main-footer-line.sub {
+  font-weight: 500;
+  font-size: 11.5px;
+  color: #7b8a73;
+  gap: 8px;
+}
+
+.footer-dot {
+  opacity: 0.5;
+}
+
+@media (max-width: 768px) {
+  .main-footer {
+    margin-top: 36px;
+    padding-bottom: 24px;
+  }
+}
+
+/* ==========================================================================
+   Profile Learning Hub Entries (My Word Library & My Progress)
+   ========================================================================== */
+.profile-hub-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profile-hub-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.profile-hub-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #ffffff;
+  border: 2px solid var(--border);
+  border-bottom: 4px solid #cbd5e1;
+  border-radius: 18px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+  width: 100%;
+  position: relative;
+}
+
+.profile-hub-card:hover {
+  transform: translateY(-1px);
+  border-color: #94a3b8;
+}
+
+.profile-hub-card.word-lib .profile-hub-icon {
+  background: #f3e8ff;
+  color: #7e22ce;
+  border: 1.5px solid #d8b4fe;
+}
+
+.profile-hub-card.my-prog .profile-hub-icon {
+  background: #eefae0;
+  color: #3f7b19;
+  border: 1.5px solid #c9e89b;
+}
+
+.profile-hub-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.profile-hub-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-hub-info strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ink);
+  margin-bottom: 2px;
+}
+
+.profile-hub-info p {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.35;
+}
+
+.profile-hub-badge {
+  font-size: 11px;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #475569;
+  padding: 4px 10px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.profile-hub-arrow {
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   Progress & Milestones Modal Redesign (Look At You Go)
+   ========================================================================== */
+.progress-modal-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.progress-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin: 6px 0 10px;
+}
+
+.progress-metric-card {
+  border: 2px solid var(--border);
+  border-bottom: 4px solid #dcdcd0;
+  border-radius: 18px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: all 0.15s ease;
+}
+
+.progress-metric-card.fire {
+  background: #fff8e8;
+  border-color: #ffe1a6;
+  border-bottom-color: #f7c96d;
+}
+.progress-metric-card.fire .metric-icon-bubble {
+  background: #ffeed1;
+  color: #ff9600;
+}
+
+.progress-metric-card.bolt {
+  background: #ebfaf0;
+  border-color: #b7edc7;
+  border-bottom-color: #91dfa7;
+}
+.progress-metric-card.bolt .metric-icon-bubble {
+  background: #d8f5e1;
+  color: #1a7837;
+}
+
+.progress-metric-card.book {
+  background: #eef7ff;
+  border-color: #bae0ff;
+  border-bottom-color: #91caff;
+}
+.progress-metric-card.book .metric-icon-bubble {
+  background: #d6ecff;
+  color: #096dd9;
+}
+
+.progress-metric-card.crown {
+  background: #fffbe6;
+  border-color: #ffe58f;
+  border-bottom-color: #ffd666;
+}
+.progress-metric-card.crown .metric-icon-bubble {
+  background: #fff1b8;
+  color: #d48806;
+}
+
+.metric-icon-bubble {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.metric-details {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.metric-details strong {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--ink);
+  line-height: 1.1;
+}
+
+.metric-details span {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 3px;
+}
+
+/* Achievements & Milestones Section */
+.achievements-section {
+  border-top: 1.5px solid var(--border);
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.achievements-heading {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink);
+  margin: 0;
+}
+
+.milestones-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.milestone-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1.5px solid var(--border);
+  background: #ffffff;
+  transition: all 0.15s ease;
+}
+
+.milestone-item.unlocked {
+  background: #fafdf7;
+  border-color: #c9e89b;
+  border-bottom: 3px solid #b2df76;
+}
+
+.milestone-item.locked {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  opacity: 0.8;
+}
+
+.milestone-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.milestone-badge.earned {
+  background: #fef08a;
+  color: #a16207;
+  border: 2px solid #fde047;
+}
+
+.milestone-badge.locked {
+  background: #e2e8f0;
+  color: #94a3b8;
+  border: 2px solid #cbd5e1;
+}
+
+.milestone-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.milestone-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--ink);
+  display: block;
+}
+
+.milestone-desc {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin: 2px 0 0;
+  line-height: 1.35;
+}
+
+.milestone-check {
+  color: #58cc02;
+  background: #eefae0;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
 }

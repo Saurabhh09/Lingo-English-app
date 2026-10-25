@@ -880,10 +880,15 @@ function App() {
           </div>
 
           <footer className="main-footer">
-            <span><Sprout size={14} /> Made for your “I did it!” moments.</span>
-            <span>{user.demo ? 'Sample stats · demo explorer' : config.database === 'supabase' ? 'Connected to Supabase' : 'Saved on this demo server'}
-              <span className="footer-dot" /> English, at your pace.
-            </span>
+            <div className="main-footer-line">
+              <span className="footer-sprout-icon">🌱</span>
+              <span className="footer-highlight">Made for your “I did it!” moments.</span>
+            </div>
+            <div className="main-footer-line sub">
+              <span>{user.demo ? 'Sample stats · Demo explorer' : config.database === 'supabase' ? 'Connected to Supabase' : 'Saved on this demo server'}</span>
+              <span className="footer-dot">•</span>
+              <span>English, at your pace.</span>
+            </div>
           </footer>
         </main>
       </div>
@@ -1043,32 +1048,69 @@ function App() {
             )}
 
             {modal.type === 'progress' && (
-              <>
+              <div className="progress-modal-view">
                 <span className="modal-emoji">🌱</span>
                 <span className="eyebrow">YOU’RE GROWING EVERY DAY</span>
                 <h2>Look at you go.</h2>
                 <p className="modal-description">Every little lesson counts. {user.demo && 'Your demo starts with sample XP, words, and a streak; new lesson activity is real.'}</p>
+                
                 <div className="progress-modal-grid">
-                  <div className="lime"><Flame /><strong>{progress.streak}</strong><span>day streak</span></div>
-                  <div className="purple"><Zap /><strong>{progress.xp}</strong><span>total XP</span></div>
-                  <div className="blue"><BookOpen /><strong>{progress.words}</strong><span>words learned</span></div>
-                  <div className="yellow"><CheckCircle2 /><strong>{progress.completed.length} / {lessons.length}</strong><span>lessons completed</span></div>
-                </div>
-                <div className="achievements">
-                  <h3>Your little milestones</h3>
-                  {[
-                    ['First little win', progress.completed.length >= 1, 'Finish your first lesson'],
-                    ['Everyday explorer', progress.completed.length >= 3, 'Complete all of unit 1'],
-                    ['A world of possibilities', progress.completed.length >= lessons.length, 'Complete the entire learning path']
-                  ].map(([title, done, desc]) => (
-                    <div key={title}>
-                      <span className={done ? 'earned' : ''}>{done ? <Trophy size={20} /> : <Lock size={20} />}</span>
-                      <div><b>{title}</b><small>{desc}</small></div>
-                      {done && <Check size={18} />}
+                  <div className="progress-metric-card fire">
+                    <div className="metric-icon-bubble"><Flame size={20} /></div>
+                    <div className="metric-details">
+                      <strong>{progress.streak}</strong>
+                      <span>Day streak</span>
                     </div>
-                  ))}
+                  </div>
+                  <div className="progress-metric-card bolt">
+                    <div className="metric-icon-bubble"><Zap size={20} /></div>
+                    <div className="metric-details">
+                      <strong>{progress.xp}</strong>
+                      <span>Total XP</span>
+                    </div>
+                  </div>
+                  <div className="progress-metric-card book">
+                    <div className="metric-icon-bubble"><BookOpen size={20} /></div>
+                    <div className="metric-details">
+                      <strong>{progress.words}</strong>
+                      <span>Words learned</span>
+                    </div>
+                  </div>
+                  <div className="progress-metric-card crown">
+                    <div className="metric-icon-bubble"><CheckCircle2 size={20} /></div>
+                    <div className="metric-details">
+                      <strong>{progress.completed.length} / {lessons.length}</strong>
+                      <span>Lessons done</span>
+                    </div>
+                  </div>
                 </div>
-              </>
+
+                <div className="achievements-section">
+                  <h3 className="achievements-heading">Your little milestones</h3>
+                  <div className="milestones-list">
+                    {[
+                      ['First little win', progress.completed.length >= 1, 'Finish your first lesson'],
+                      ['Everyday explorer', progress.completed.length >= 3, 'Complete all of unit 1'],
+                      ['A world of possibilities', progress.completed.length >= lessons.length, 'Complete the entire learning path']
+                    ].map(([title, done, desc]) => (
+                      <div key={title} className={`milestone-item ${done ? 'unlocked' : 'locked'}`}>
+                        <div className={`milestone-badge ${done ? 'earned' : 'locked'}`}>
+                          {done ? <Trophy size={18} /> : <Lock size={18} />}
+                        </div>
+                        <div className="milestone-text">
+                          <b className="milestone-title">{title}</b>
+                          <p className="milestone-desc">{desc}</p>
+                        </div>
+                        {done && (
+                          <div className="milestone-check" aria-label="Completed">
+                            <Check size={16} />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             )}
 
             {modal.type === 'profile' && (
@@ -1202,6 +1244,40 @@ function App() {
                     <Trophy size={18} />
                     <strong>{progress.completed?.length || 0}</strong>
                     <span>lessons completed</span>
+                  </div>
+                </div>
+
+                {/* Learning Hub Entries: My Word Library & My Progress */}
+                <div className="profile-hub-entries">
+                  <span className="profile-box-label">YOUR LEARNING HUB</span>
+                  <div className="profile-hub-grid">
+                    <button
+                      type="button"
+                      className="profile-hub-card word-lib"
+                      onClick={() => setModal({ type: 'library' })}
+                    >
+                      <div className="profile-hub-icon"><Bookmark size={20} /></div>
+                      <div className="profile-hub-info">
+                        <strong>My Word Library</strong>
+                        <p>Vocabulary & saved flashcards</p>
+                      </div>
+                      <span className="profile-hub-badge">{progress.saved.length} {progress.saved.length === 1 ? 'word' : 'words'}</span>
+                      <ChevronRight size={18} className="profile-hub-arrow" />
+                    </button>
+
+                    <button
+                      type="button"
+                      className="profile-hub-card my-prog"
+                      onClick={() => setModal({ type: 'progress' })}
+                    >
+                      <div className="profile-hub-icon"><BarChart3 size={20} /></div>
+                      <div className="profile-hub-info">
+                        <strong>My Progress & Milestones</strong>
+                        <p>Streak, XP & achievements</p>
+                      </div>
+                      <span className="profile-hub-badge">{progress.completed?.length || 0} done</span>
+                      <ChevronRight size={18} className="profile-hub-arrow" />
+                    </button>
                   </div>
                 </div>
 
@@ -1656,11 +1732,14 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
       </div>
 
       <div className="exercise-prompt-wrap">
-        <h2 className="exercise-prompt-title">Listen and choose</h2>
-        <p className="exercise-prompt-sub">{currentEx?.prompt || 'Tap the correct image for what you hear.'}</p>
+        <span className="exercise-category-eyebrow">
+          <Headphones size={14} /> {currentEx?.exerciseType === 'listening' ? 'LISTEN & CHOOSE' : 'CHOOSE THE CORRECT ANSWER'}
+        </span>
+        <h2 className="exercise-prompt-title">{currentEx?.prompt || 'Listen to the audio and choose the right option'}</h2>
+        <p className="exercise-prompt-sub">Listen to the audio or read along, then select the best answer below.</p>
       </div>
 
-      {/* Audio & Mascot Prompt Area (Screenshot 4) */}
+      {/* Audio & Mascot Prompt Area */}
       <div className="exercise-audio-card">
         <div className="exercise-mascot-peek">
           <Mascot pose="listen" size={68} />
@@ -1673,8 +1752,9 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
         >
           <Volume2 size={26} />
         </button>
-        <div className="exercise-speech-bubble">
-          Take your time!
+        <div className="exercise-audio-prompt-box">
+          <div className="exercise-prompt-quote">“{currentEx?.prompt || 'Listen closely to the audio.'}”</div>
+          <span className="exercise-audio-hint">Tap speaker to replay audio</span>
         </div>
       </div>
 
