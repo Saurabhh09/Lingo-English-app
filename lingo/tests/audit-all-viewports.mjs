@@ -151,17 +151,42 @@ async function runAudit() {
 
     // Also test Modals on this viewport:
     // 1. Profile modal
-    const profileBtn = page.locator('.profile-chip');
-    if (await profileBtn.isVisible()) {
-      await profileBtn.click();
-      await page.waitForTimeout(300);
+    if (vp.width <= 768) {
+      const pNav = page.locator('.mobile-nav').getByRole('button', { name: /Profile/i });
+      if (await pNav.isVisible()) await pNav.click();
+    } else {
+      const pHeader = page.locator('.header-profile');
+      if (await pHeader.isVisible()) await pHeader.click();
+    }
+    await page.waitForTimeout(300);
+    const profileModal = page.locator('.profile-modal-view');
+    if (await profileModal.isVisible()) {
       await checkOverflow('Profile Modal', vp);
+
+      // Verify the new Hub entries in Profile:
+      const wordLibHub = page.locator('.profile-hub-card.word-lib');
+      const progHub = page.locator('.profile-hub-card.my-prog');
+      if (!(await wordLibHub.isVisible()) || !(await progHub.isVisible())) {
+        console.error('❌ Missing Learning Hub cards in Profile modal!');
+      }
+
       const closeBtn = page.locator('.modal-close');
       if (await closeBtn.isVisible()) await closeBtn.click();
       await page.waitForTimeout(200);
     }
 
-    // 2. Word Library modal
+    // 2. Progress / Milestones Modal ("Look at you go")
+    const streakPill = page.locator('.streak-pill');
+    if (await streakPill.isVisible()) {
+      await streakPill.click();
+      await page.waitForTimeout(300);
+      await checkOverflow('Progress & Milestones Modal', vp);
+      const closeBtn = page.locator('.modal-close');
+      if (await closeBtn.isVisible()) await closeBtn.click();
+      await page.waitForTimeout(200);
+    }
+
+    // 3. Word Library modal
     const wordLibBtn = page.getByRole('button', { name: /Word library/i });
     if (await wordLibBtn.isVisible()) {
       await wordLibBtn.click();

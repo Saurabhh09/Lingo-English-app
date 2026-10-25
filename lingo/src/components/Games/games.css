@@ -37,6 +37,28 @@
   line-height: 1.6;
 }
 
+.game-feature-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.game-feature-pills span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  font-size: 13px;
+  font-weight: 700;
+  color: #4b366f;
+  border: 1px solid rgba(175, 94, 236, 0.25);
+  box-shadow: 0 2px 6px rgba(124, 109, 142, 0.06);
+}
+
 /* Setup Grid: Main (Create + Join) + Sidebar (Guide) */
 .game-setup-grid {
   display: grid;
