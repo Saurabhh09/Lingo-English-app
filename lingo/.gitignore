@@ -3,6 +3,7 @@ dist/
 .env
 .env.*
 !.env.example
+!.env.production
 data.json
 data.json.tmp
 tests/*.png

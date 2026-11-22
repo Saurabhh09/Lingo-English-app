@@ -5,13 +5,14 @@ import {
   Search, Flame, ChevronDown, ChevronRight, ChevronLeft, Check, Plus, X, Lock,
   Play, Volume2, Bookmark, Clock, Users, Copy, Trophy, Sparkles, Target, LogOut,
   Settings, CheckCircle2, Loader2, BarChart3, Leaf, Zap, Globe, RotateCcw,
-  GraduationCap, Info, ShieldCheck, Heart, User, Edit3
+  GraduationCap, Info, ShieldCheck, Heart, User, Edit3, Smartphone, Download
 } from 'lucide-react';
+import { getApiUrl, isNativePlatform } from './apiConfig.js';
 import {
   BookArt, GameArt, TopicArt, Sprout, Mascot,
   AppleIllustration, CupIllustration, DogIllustration, CatIllustration
-} from './Art';
-import { lessons } from '../content';
+} from './Art.jsx';
+import { lessons } from '../content.js';
 import './style.css';
 import './components/Learn/learn.css';
 import './components/Games/games.css';
@@ -65,8 +66,10 @@ function App() {
     toastTimer.current = setTimeout(() => setToast(''), 3500);
   };
 
+  const isNative = isNativePlatform();
+
   async function api(url, body, method) {
-    const r = await fetch('/api' + url, {
+    const r = await fetch(getApiUrl('/api' + url), {
       method: method || (body ? 'POST' : 'GET'),
       headers: {
         'Content-Type': 'application/json',
@@ -103,7 +106,7 @@ function App() {
     try {
       setLoading(true);
       setFatal('');
-      const c = await fetch('/api/config').then(r => r.json());
+      const c = await fetch(getApiUrl('/api/config')).then(r => r.json());
       setConfig(c);
       let d;
       if (token.current) {
@@ -559,6 +562,13 @@ function App() {
             Let’s make it happen <ArrowUpRight size={17} />
           </button>
         </div>
+        {!isNative && (
+          <a href="/lingo.apk" download="lingo.apk" className="sidebar-apk-link" title="Download Android APK">
+            <Smartphone size={17} />
+            <span>Install App (APK)</span>
+            <Download size={14} className="sidebar-apk-download-icon" />
+          </a>
+        )}
         <button className="sidebar-profile" onClick={() => setModal({ type: user.demo ? 'auth' : 'profile' })}>
           <span className={`avatar ${avatarColor}`}>{selectedAvatar}</span>
           <span><b>{user.name}</b><small>{user.demo ? 'Demo explorer' : 'English explorer'}</small></span>
@@ -622,6 +632,20 @@ function App() {
               <Zap size={16} fill="currentColor" />
               <b>{progress.xp}</b>
             </div>
+            {/* Download Android APK Button for Web Users */}
+            {!isNative && (
+              <a
+                href="/lingo.apk"
+                download="lingo.apk"
+                className="download-apk-pill"
+                title="Download Android APK"
+                aria-label="Download Android App APK"
+              >
+                <Smartphone size={15} />
+                <span>Get App</span>
+                <span className="apk-badge">APK</span>
+              </a>
+            )}
             {/* Profile Avatar */}
             <button className="header-profile" onClick={() => setModal({ type: user.demo ? 'auth' : 'profile' })} aria-label="Account">
               <span className={`avatar small ${avatarColor}`}>{selectedAvatar}</span>
@@ -720,6 +744,27 @@ function App() {
                       <div className="stat-box-label">Games won</div>
                     </div>
                   </div>
+
+                  {/* APK Download Banner for Web Users */}
+                  {!isNative && (
+                    <div className="install-apk-banner">
+                      <div className="install-apk-content">
+                        <div className="install-apk-icon">
+                          <Smartphone size={24} />
+                        </div>
+                        <div className="install-apk-text">
+                          <h4 className="install-apk-title">Install Lingo on your Android Phone</h4>
+                          <p className="install-apk-subtitle">
+                            Practice English speaking, vocabulary, and games anywhere directly from the mobile app.
+                          </p>
+                        </div>
+                      </div>
+                      <a href="/lingo.apk" download="lingo.apk" className="button green install-apk-btn">
+                        <Download size={17} />
+                        <span>Download APK</span>
+                      </a>
+                    </div>
+                  )}
 
                   {/* 4. "Continue learning" Section */}
                   <div className="continue-learning-section">

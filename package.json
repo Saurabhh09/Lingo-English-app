@@ -9,6 +9,13 @@
   "scripts": {
     "dev": "npm --prefix lingo run dev",
     "build": "npm --prefix lingo run build && node -e \"import('node:fs').then(fs => { if (fs.existsSync('lingo/dist')) fs.cpSync('lingo/dist', 'dist', { recursive: true }); })\"",
+    "build:mobile": "npm --prefix lingo run build:mobile",
+    "build:apk": "npm --prefix lingo run build:apk",
+    "adb:devices": "adb devices",
+    "app:install": "node lingo/scripts/install-device.mjs",
+    "app:dev": "node lingo/scripts/live-reload.mjs",
+    "cap:sync": "npm --prefix lingo run cap:sync",
+    "cap:open": "npm --prefix lingo run cap:open",
     "start": "npm --prefix lingo start",
     "test:e2e": "npm --prefix lingo run test:e2e",
     "test:api": "npm --prefix lingo run test:api"
