@@ -2642,3 +2642,157 @@ main {
   place-items: center;
   flex-shrink: 0;
 }
+
+/* ==========================================================================
+   Android APK Download & Mobile App Polish
+   ========================================================================== */
+
+/* Topbar APK Button */
+.download-apk-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #ffffff !important;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 999px;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.28);
+  transition: all 0.18s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.download-apk-pill:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.38);
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+}
+
+.download-apk-pill .apk-badge {
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+/* Sidebar APK Link */
+.sidebar-apk-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 14px 6px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #f0fdf4;
+  border: 1.5px solid #bbf7d0;
+  color: #166534 !important;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 750;
+  transition: all 0.15s ease;
+}
+
+.sidebar-apk-link:hover {
+  background: #dcfce7;
+  border-color: #86efac;
+  transform: translateY(-1px);
+}
+
+.sidebar-apk-download-icon {
+  margin-left: auto;
+  opacity: 0.75;
+}
+
+/* Home Dashboard APK Download Banner */
+.install-apk-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 20px 0 10px;
+  padding: 18px 22px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
+  border: 2px solid #a7f3d0;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.08);
+}
+
+.install-apk-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.install-apk-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: #10b981;
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  box-shadow: 0 3px 8px rgba(16, 185, 129, 0.3);
+}
+
+.install-apk-text {
+  min-width: 0;
+}
+
+.install-apk-title {
+  margin: 0;
+  font-size: 15.5px;
+  font-weight: 800;
+  color: #064e3b;
+}
+
+.install-apk-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #047857;
+  line-height: 1.4;
+}
+
+.install-apk-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  padding: 12px 20px;
+  border-radius: 14px;
+  font-weight: 800;
+  font-size: 14px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-shadow: 0 3px 10px rgba(16, 185, 129, 0.25);
+}
+
+@media (max-width: 680px) {
+  .install-apk-banner {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 16px;
+  }
+  .install-apk-btn {
+    justify-content: center;
+    width: 100%;
+  }
+  .download-apk-pill span:not(.apk-badge) {
+    display: none;
+  }
+}
+
+/* Safe-area insets for mobile app notch and system bars */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .topbar {
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+  .mobile-nav {
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+}

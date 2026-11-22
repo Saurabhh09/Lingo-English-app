@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Lock, Sparkles, Clock, Zap, Target, CheckCircle2, Trophy, ArrowRight, ShieldCheck, BookOpen } from 'lucide-react';
+import { getApiUrl } from '../../apiConfig';
 
 export function LessonPreviewModal({ lesson, onClose, onStartReal, isLocked, prerequisiteName }) {
   if (!lesson) return null;
@@ -11,7 +12,7 @@ export function LessonPreviewModal({ lesson, onClose, onStartReal, isLocked, pre
   useEffect(() => {
     let active = true;
     if (targetId && !isCheckpoint) {
-      fetch(`/api/curriculum/lessons/${encodeURIComponent(targetId)}`)
+      fetch(getApiUrl(`/api/curriculum/lessons/${encodeURIComponent(targetId)}`))
         .then(res => res.ok ? res.json() : null)
         .then(data => {
           if (active && data) setCurriculumData(data);
