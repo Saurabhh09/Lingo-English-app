@@ -15,8 +15,11 @@
       "showSpinner": false
     },
     "StatusBar": {
-      "style": "DARK",
-      "backgroundColor": "#0f172a"
+      "style": "LIGHT",
+      "backgroundColor": "#faf8f0"
+    },
+    "CapacitorHttp": {
+      "enabled": true
     }
   }
 }

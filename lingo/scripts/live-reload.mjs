@@ -75,7 +75,7 @@ function restoreConfig() {
     if (fs.existsSync(androidAssetsConfig)) {
       fs.writeFileSync(androidAssetsConfig, originalConfigText, 'utf8');
     }
-  } catch (e) {}
+  } catch (e) { }
   console.log('✅ Config restored.');
 }
 
