@@ -7,7 +7,7 @@ import {
   Settings, CheckCircle2, Loader2, BarChart3, Leaf, Zap, Globe, RotateCcw,
   GraduationCap, Info, ShieldCheck, Heart, User, Edit3, Smartphone, Download
 } from 'lucide-react';
-import { getApiUrl, isNativePlatform } from './apiConfig.js';
+import { getApiUrl, isNativePlatform, requestApi } from './apiConfig.js';
 import {
   BookArt, GameArt, TopicArt, Sprout, Mascot,
   AppleIllustration, CupIllustration, DogIllustration, CatIllustration
@@ -69,22 +69,7 @@ function App() {
   const isNative = isNativePlatform();
 
   async function api(url, body, method) {
-    const r = await fetch(getApiUrl('/api' + url), {
-      method: method || (body ? 'POST' : 'GET'),
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token.current ? { Authorization: 'Bearer ' + token.current } : {})
-      },
-      ...(body ? { body: JSON.stringify(body) } : {})
-    });
-    const data = await r.json();
-    if (data.serverTime) data.clientReceivedAt = Date.now();
-    if (!r.ok) {
-      const err = Error(data.error || 'Something went wrong. Please try again.');
-      err.status = r.status;
-      throw err;
-    }
-    return data;
+    return requestApi(url, { body, method, token: token.current });
   }
 
   const adopt = d => {
@@ -106,7 +91,7 @@ function App() {
     try {
       setLoading(true);
       setFatal('');
-      const c = await fetch(getApiUrl('/api/config')).then(r => r.json());
+      const c = await api('/config').catch(() => ({ database: 'demo' }));
       setConfig(c);
       let d;
       if (token.current) {
@@ -173,7 +158,7 @@ function App() {
   async function handleExitDemo() {
     try {
       await api('/auth/logout', {});
-    } catch {}
+    } catch { }
     token.current = null;
     localStorage.removeItem('lingo-token');
     localStorage.removeItem('lingo-game');
@@ -187,6 +172,13 @@ function App() {
 
   useEffect(() => {
     initialize();
+    if (isNativePlatform()) {
+      import('@capacitor/status-bar').then(({ StatusBar, Style }) => {
+        StatusBar.setStyle({ style: Style.Light }).catch(() => {});
+        StatusBar.setBackgroundColor({ color: '#faf8f0' }).catch(() => {});
+        StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {});
+      }).catch(() => {});
+    }
     return () => clearTimeout(toastTimer.current);
   }, []);
 
@@ -393,19 +385,24 @@ function App() {
   if (loading) {
     return (
       <div className="loading-screen">
-        <div className="brand"><Sprout /><span>lingo<span className="brand-dot">.</span></span></div>
-        {fatal ? (
-          <>
-            <p>{fatal}</p>
-            <button className="button dark" onClick={initialize}>Try again</button>
-            <small>If you’ve configured Supabase, run the provided schema first.</small>
-          </>
-        ) : (
-          <>
-            <Loader2 className="spin" />
-            <p>Getting your happy place ready…</p>
-          </>
-        )}
+        <div className="loading-content">
+          <div className="brand">
+            <Sprout size={36} />
+            <span>lingo<span className="brand-dot">.</span></span>
+          </div>
+          {fatal ? (
+            <div className="loading-error">
+              <p>{fatal}</p>
+              <button className="button dark" onClick={initialize}>Try again</button>
+              <small>If you’ve configured Supabase, run the provided schema first.</small>
+            </div>
+          ) : (
+            <div className="loading-body">
+              <Loader2 className="spin" size={36} />
+              <p>Getting your happy place ready…</p>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -469,23 +466,23 @@ function App() {
           <div className="welcome-social-row">
             <button className="social-pill-btn" onClick={() => setAuthModal('signup')}>
               <svg width="18" height="18" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.05h3.9c2.28-2.1 3.645-5.18 3.645-9.14z"/>
-                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.9-3.05c-1.08.72-2.45 1.16-4.03 1.16-3.1 0-5.73-2.09-6.67-4.9H1.3v3.14C3.28 21.23 7.35 24 12 24z"/>
-                <path fill="#FBBC05" d="M5.33 14.3c-.24-.72-.38-1.49-.38-2.3s.14-1.58.38-2.3V6.56H1.3C.47 8.2 0 10.04 0 12s.47 3.8 1.3 5.44l4.03-3.14z"/>
-                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.28 2.77 1.3 6.56l4.03 3.14c.94-2.81 3.57-4.95 6.67-4.95z"/>
+                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.05h3.9c2.28-2.1 3.645-5.18 3.645-9.14z" />
+                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.9-3.05c-1.08.72-2.45 1.16-4.03 1.16-3.1 0-5.73-2.09-6.67-4.9H1.3v3.14C3.28 21.23 7.35 24 12 24z" />
+                <path fill="#FBBC05" d="M5.33 14.3c-.24-.72-.38-1.49-.38-2.3s.14-1.58.38-2.3V6.56H1.3C.47 8.2 0 10.04 0 12s.47 3.8 1.3 5.44l4.03-3.14z" />
+                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.28 2.77 1.3 6.56l4.03 3.14c.94-2.81 3.57-4.95 6.67-4.95z" />
               </svg>
               <span>Google</span>
             </button>
             <button className="social-pill-btn" onClick={() => setAuthModal('signup')}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.62-.75 1.04-1.8 0.92-2.85-.9.04-1.99.6-2.64 1.36-.58.67-1.09 1.74-.95 2.77 1 .08 2.04-.52 2.67-1.28z"/>
+                <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.62-.75 1.04-1.8 0.92-2.85-.9.04-1.99.6-2.64 1.36-.58.67-1.09 1.74-.95 2.77 1 .08 2.04-.52 2.67-1.28z" />
               </svg>
               <span>Apple</span>
             </button>
             <button className="social-pill-btn" onClick={() => setAuthModal('signup')}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="2" y="4" width="20" height="16" rx="2"/>
-                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+                <rect x="2" y="4" width="20" height="16" rx="2" />
+                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
               </svg>
               <span>Email</span>
             </button>
@@ -577,84 +574,87 @@ function App() {
       </aside>
 
       <div className="workspace">
-        {/* Topbar */}
-        <header className="topbar">
-          <div className="mobile-brand-mark">
-            <span className="brand-leaf">🌱</span>
-            <b>Lingo</b>
-          </div>
-          <div className="breadcrumb topbar-crumb">
-            My workspace <ChevronRight size={14} /><span>{headings[page][1]}</span>
-          </div>
-          <div className="topbar-actions">
-            <div className="search-wrap">
-              <Search size={17} />
-              <input
-                aria-label="Search lessons and words"
-                placeholder="Find something to learn…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
-              <kbd>⌕</kbd>
-              {search && (
-                <div className="search-results">
-                  <span className="eyebrow">LESSONS & WORDS</span>
-                  {[
-                    ...lessons.filter(l => (l.title + ' ' + l.subtitle).toLowerCase().includes(search.toLowerCase())).map(l => (
-                      <button key={l.id} onClick={() => { setSearch(''); navigate('learn'); openLesson(l); }}>
-                        <span>{l.icon}</span>
-                        <div><b>{l.title}</b><small>{l.subtitle}</small></div>
-                        <ArrowUpRight size={16} />
-                      </button>
-                    )),
-                    ...words.filter(w => w.word.toLowerCase().includes(search.toLowerCase())).map(w => (
-                      <button key={w.word} onClick={() => { setWordIndex(words.indexOf(w)); setSearch(''); setModal({ type: 'word', word: w }); }}>
-                        <BookOpen size={18} />
-                        <div><b>{w.word}</b><small>{w.type}</small></div>
-                        <ArrowUpRight size={16} />
-                      </button>
-                    ))
-                  ]}
-                  <p className="search-hint">
-                    {!lessons.some(l => (l.title + ' ' + l.subtitle).toLowerCase().includes(search.toLowerCase())) && !words.some(w => w.word.toLowerCase().includes(search.toLowerCase()))
-                      ? 'No matches yet. Try “food”, “grammar”, or “curious”.'
-                      : 'A new discovery is one click away.'}
-                  </p>
-                </div>
+        {/* Topbar: Scoped exclusively to the Home screen */}
+        {page === 'home' && (
+          <header className="topbar">
+            <div className="mobile-brand-mark">
+              <Mascot pose="walk" size={32} className="topbar-mascot" />
+              <b>Lingo</b>
+            </div>
+            <div className="breadcrumb topbar-crumb">
+              My workspace <ChevronRight size={14} /><span>{headings[page][1]}</span>
+            </div>
+            <div className="topbar-actions">
+              <div className="search-wrap">
+                <Search size={17} />
+                <input
+                  aria-label="Search lessons and words"
+                  placeholder="Find something to learn…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                />
+                <kbd>⌕</kbd>
+                {search && (
+                  <div className="search-results">
+                    <span className="eyebrow">LESSONS & WORDS</span>
+                    {[
+                      ...lessons.filter(l => (l.title + ' ' + l.subtitle).toLowerCase().includes(search.toLowerCase())).map(l => (
+                        <button key={l.id} onClick={() => { setSearch(''); navigate('learn'); openLesson(l); }}>
+                          <span>{l.icon}</span>
+                          <div><b>{l.title}</b><small>{l.subtitle}</small></div>
+                          <ArrowUpRight size={16} />
+                        </button>
+                      )),
+                      ...words.filter(w => w.word.toLowerCase().includes(search.toLowerCase())).map(w => (
+                        <button key={w.word} onClick={() => { setWordIndex(words.indexOf(w)); setSearch(''); setModal({ type: 'word', word: w }); }}>
+                          <BookOpen size={18} />
+                          <div><b>{w.word}</b><small>{w.type}</small></div>
+                          <ArrowUpRight size={16} />
+                        </button>
+                      ))
+                    ]}
+                    <p className="search-hint">
+                      {!lessons.some(l => (l.title + ' ' + l.subtitle).toLowerCase().includes(search.toLowerCase())) && !words.some(w => w.word.toLowerCase().includes(search.toLowerCase()))
+                        ? 'No matches yet. Try “food”, “grammar”, or “curious”.'
+                        : 'A new discovery is one click away.'}
+                    </p>
+                  </div>
+                )}
+              </div>
+              {/* Streak Indicator with Flame */}
+              <button className="streak-pill" onClick={() => setModal({ type: 'progress' })} aria-label="View learning streak">
+                <Flame size={18} /><b>{progress.streak}</b><span>day streak</span>
+              </button>
+              {/* Gem / Energy Badge */}
+              <div className="gem-pill" aria-label="Energy & XP">
+                <Zap size={16} fill="currentColor" />
+                <b>{progress.xp}</b>
+              </div>
+              {/* Download Android APK Button for Web Users */}
+              {!isNative && (
+                <a
+                  href="/lingo.apk"
+                  download="lingo.apk"
+                  className="download-apk-pill"
+                  title="Download Android APK"
+                  aria-label="Download Android App APK"
+                >
+                  <Smartphone size={15} />
+                  <span>Get App</span>
+                  <span className="apk-badge">APK</span>
+                </a>
               )}
+              {/* Profile Avatar */}
+              <button className="header-profile" onClick={() => setModal({ type: user.demo ? 'auth' : 'profile' })} aria-label="Account">
+                <span className={`avatar small ${avatarColor}`}>{selectedAvatar}</span>
+                <ChevronDown size={15} />
+              </button>
             </div>
-            {/* Streak Indicator with Flame */}
-            <button className="streak-pill" onClick={() => setModal({ type: 'progress' })} aria-label="View learning streak">
-              <Flame size={18} /><b>{progress.streak}</b><span>day streak</span>
-            </button>
-            {/* Gem / Energy Badge */}
-            <div className="gem-pill" aria-label="Energy & XP">
-              <Zap size={16} fill="currentColor" />
-              <b>{progress.xp}</b>
-            </div>
-            {/* Download Android APK Button for Web Users */}
-            {!isNative && (
-              <a
-                href="/lingo.apk"
-                download="lingo.apk"
-                className="download-apk-pill"
-                title="Download Android APK"
-                aria-label="Download Android App APK"
-              >
-                <Smartphone size={15} />
-                <span>Get App</span>
-                <span className="apk-badge">APK</span>
-              </a>
-            )}
-            {/* Profile Avatar */}
-            <button className="header-profile" onClick={() => setModal({ type: user.demo ? 'auth' : 'profile' })} aria-label="Account">
-              <span className={`avatar small ${avatarColor}`}>{selectedAvatar}</span>
-              <ChevronDown size={15} />
-            </button>
-          </div>
-        </header>
+          </header>
+        )}
 
         <main
+          className={`app-main ${page === 'home' ? 'home-main' : page === 'learn' ? 'learn-main' : 'interior-main'}`}
           onTouchStart={e => touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }}
           onTouchEnd={e => {
             if (!touch.current || modal) return;
@@ -666,40 +666,29 @@ function App() {
             touch.current = null;
           }}
         >
-          {/* Page Heading (Preserved for accessibility & tests) */}
-          <div className="page-heading">
-            <div>
-              <p>{headings[page][0]}</p>
-              <h1>{headings[page][1]}<span className="heading-dot">.</span></h1>
-            </div>
-            <div className="heading-right">
-              <span className="date-label">
-                {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-              </span>
-              <div className="page-arrows">
-                <button onClick={() => navigate(pages[(pages.indexOf(page) + pages.length - 1) % pages.length])} aria-label="Previous section">
-                  <ChevronLeft size={17} />
-                </button>
-                <button onClick={() => navigate(pages[(pages.indexOf(page) + 1) % pages.length])} aria-label="Next section">
-                  <ChevronRight size={17} />
-                </button>
+          {/* Page Heading for non-home views (Preserved for accessibility & titles) */}
+          {page !== 'home' && page !== 'learn' && (
+            <div className="page-heading">
+              <div>
+                <p>{headings[page][0]}</p>
+                <h1>{headings[page][1]}<span className="heading-dot">.</span></h1>
               </div>
             </div>
-          </div>
+          )}
 
           <div className={'page-content ' + (direction > 0 ? 'from-right' : 'from-left')} key={page}>
             {/* SCREEN 2: HOME DASHBOARD (Matches Screenshot 2) */}
             {page === 'home' && (
               <div className="dashboard-grid">
                 <div className="dashboard-main">
-                  {/* 1. Greeting Card with Peeking Mascot */}
+                  {/* 1. Greeting Card with Walking/Waving Mascot */}
                   <div className="dashboard-greeting-card">
                     <div className="greeting-text-block">
                       <div className="greeting-eyebrow">Good morning!</div>
                       <h2 className="greeting-title">Ready to learn today?</h2>
                     </div>
                     <div className="greeting-mascot-peek">
-                      <Mascot pose="peek" size={88} />
+                      <Mascot pose="walk" size={90} />
                     </div>
                   </div>
 
@@ -721,25 +710,15 @@ function App() {
                     <ChevronRight size={20} color="#77858d" />
                   </div>
 
-                  {/* 3. 4-Card Stats Row */}
-                  <div className="stats-row-4">
-                    <div className="stat-box fire">
-                      <div className="stat-box-icon"><Flame size={20} fill="#ff9600" /></div>
-                      <div className="stat-box-value">{progress.streak}</div>
-                      <div className="stat-box-label">Day streak</div>
-                    </div>
-                    <div className="stat-box bolt">
-                      <div className="stat-box-icon"><Zap size={20} fill="#58cc02" /></div>
-                      <div className="stat-box-value">{progress.xp}</div>
-                      <div className="stat-box-label">Total XP</div>
-                    </div>
+                  {/* 3. 2-Card Stats Row (Streak and XP remain always visible in header pills) */}
+                  <div className="stats-row-2">
                     <div className="stat-box book">
-                      <div className="stat-box-icon"><BookOpen size={20} /></div>
+                      <div className="stat-box-icon"><BookOpen size={22} /></div>
                       <div className="stat-box-value">{progress.words}</div>
                       <div className="stat-box-label">Words learned</div>
                     </div>
                     <div className="stat-box crown">
-                      <div className="stat-box-icon"><Trophy size={20} /></div>
+                      <div className="stat-box-icon"><Trophy size={22} /></div>
                       <div className="stat-box-value">{progress.gamesWon || 0}</div>
                       <div className="stat-box-label">Games won</div>
                     </div>
@@ -789,30 +768,6 @@ function App() {
                       </div>
                     </div>
                   </div>
-
-                  {/* 5. "Explore" Section */}
-                  <div className="explore-section">
-                    <div className="section-header-row" style={{ marginBottom: '12px' }}>
-                      <h3 className="section-header-title">Explore</h3>
-                    </div>
-                    <div className="explore-grid-3">
-                      <div className="explore-card green" onClick={() => navigate('learn')}>
-                        <div className="explore-card-icon"><BookOpen size={20} /></div>
-                        <strong className="explore-card-title">Learn</strong>
-                        <span className="explore-card-sub">Structured path</span>
-                      </div>
-                      <div className="explore-card purple" onClick={() => navigate('practice')}>
-                        <div className="explore-card-icon"><Headphones size={20} /></div>
-                        <strong className="explore-card-title">Practice</strong>
-                        <span className="explore-card-sub">Listen, speak, write</span>
-                      </div>
-                      <div className="explore-card yellow" onClick={() => navigate('games')}>
-                        <div className="explore-card-icon"><Gamepad2 size={20} /></div>
-                        <strong className="explore-card-title">Play</strong>
-                        <span className="explore-card-sub">Games & friends</span>
-                      </div>
-                    </div>
-                  </div>
                 </div>
 
                 {/* Dashboard Rail */}
@@ -848,26 +803,37 @@ function App() {
                   </section>
 
                   <section className="word-card purple panel">
-                    <div className="card-heading">
-                      <span className="eyebrow">A WORD TO FALL IN LOVE WITH</span>
-                      <Sparkles size={17} />
+                    <div className="word-card-top-header">
+                      <div className="word-badge-pill">
+                        <Sparkles size={13} />
+                        <span>A WORD TO FALL IN LOVE WITH</span>
+                      </div>
+                      <span className="word-daily-tag">Refreshes daily</span>
                     </div>
                     <div className="word-title">
                       <h3>{word.word}</h3>
-                      <button className="icon-button" onClick={() => speak()} aria-label="Hear pronunciation">
-                        <Volume2 size={18} />
+                      <button className="word-speak-btn" onClick={() => speak()} aria-label="Hear pronunciation">
+                        <Volume2 size={20} />
                       </button>
                     </div>
-                    <div className="phonetic">{word.phonetic} <span>{word.type}</span></div>
-                    <p>{word.meaning}</p>
-                    <div className="word-example">“{word.example}”</div>
-                    <div className="word-footer">
-                      <button onClick={() => saveWord()}>
+                    <div className="phonetic-wrap">
+                      <span className="phonetic-text">{word.phonetic}</span>
+                      <span className="part-of-speech-tag">{word.type}</span>
+                    </div>
+                    <p className="word-meaning-text">{word.meaning}</p>
+                    <div className="word-example-quote">
+                      <span className="quote-mark">“</span>
+                      <span>{word.example}</span>
+                      <span className="quote-mark">”</span>
+                    </div>
+                    <div className="word-card-actions">
+                      <button className="save-word-btn" onClick={() => saveWord()}>
                         <Bookmark size={15} fill={progress.saved.includes(word.word) ? 'currentColor' : 'none'} />
-                        {progress.saved.includes(word.word) ? 'Saved to library' : 'Save this word'}
+                        <span>{progress.saved.includes(word.word) ? 'Saved in library' : 'Save this word'}</span>
                       </button>
-                      <button className="icon-button" aria-label="Discover another word" onClick={() => setWordIndex((wordIndex + 1) % words.length)}>
-                        <ArrowRight size={16} />
+                      <button className="next-word-btn" aria-label="Discover another word" onClick={() => setWordIndex((wordIndex + 1) % words.length)}>
+                        <span>Next word</span>
+                        <ArrowRight size={15} />
                       </button>
                     </div>
                   </section>
@@ -924,41 +890,51 @@ function App() {
             )}
           </div>
 
-          <footer className="main-footer">
-            <div className="main-footer-line">
-              <span className="footer-sprout-icon">🌱</span>
-              <span className="footer-highlight">Made for your “I did it!” moments.</span>
-            </div>
-            <div className="main-footer-line sub">
-              <span>{user.demo ? 'Sample stats · Demo explorer' : config.database === 'supabase' ? 'Connected to Supabase' : 'Saved on this demo server'}</span>
-              <span className="footer-dot">•</span>
-              <span>English, at your pace.</span>
-            </div>
-          </footer>
+          {page !== 'learn' && (
+            <footer className="main-footer">
+              <div className="main-footer-line">
+                <span className="footer-sprout-icon">🌱</span>
+                <span className="footer-highlight">Made for your “I did it!” moments.</span>
+              </div>
+              <div className="main-footer-line sub">
+                <span>{user.demo ? 'Sample stats · Demo explorer' : config.database === 'supabase' ? 'Connected to Supabase' : 'Saved on this demo server'}</span>
+                <span className="footer-dot">•</span>
+                <span>English, at your pace.</span>
+              </div>
+            </footer>
+          )}
         </main>
       </div>
 
-      {/* MOBILE BOTTOM NAVIGATION BAR (Matches Screenshot 2) */}
-      <nav className="mobile-nav">
+      {/* MOBILE BOTTOM NAVIGATION DOCK (Glassmorphic Pill Dock) */}
+      <nav className="mobile-nav" role="navigation" aria-label="Main Navigation">
         {[
           [LayoutGrid, 'home', 'Home'],
           [BookOpen, 'learn', 'Learn'],
           [Headphones, 'practice', 'Practice'],
           [Gamepad2, 'games', 'Play'],
           [User, 'profile', 'Profile']
-        ].map(([Icon, key, label]) => (
-          <button
-            key={key}
-            onClick={() => {
-              if (key === 'profile') setModal({ type: user.demo ? 'auth' : 'profile' });
-              else navigate(key);
-            }}
-            className={`mobile-nav-btn ${page === key && key !== 'profile' ? 'active' : ''}`}
-          >
-            <Icon size={20} />
-            <span>{label}</span>
-          </button>
-        ))}
+        ].map(([Icon, key, label]) => {
+          const isProfileOpen = modal?.type === 'profile' || modal?.type === 'auth';
+          const isActive = (key === 'profile' && isProfileOpen) || (page === key && !isProfileOpen);
+          return (
+            <button
+              key={key}
+              onClick={() => {
+                if (key === 'profile') setModal({ type: user.demo ? 'auth' : 'profile' });
+                else {
+                  if (modal) setModal(null);
+                  navigate(key);
+                }
+              }}
+              className={`mobile-nav-btn ${isActive ? 'active' : ''}`}
+              aria-label={label}
+            >
+              <Icon size={19} />
+              <span>{label}</span>
+            </button>
+          );
+        })}
       </nav>
 
       {user.demo && (
@@ -1094,11 +1070,19 @@ function App() {
 
             {modal.type === 'progress' && (
               <div className="progress-modal-view">
-                <span className="modal-emoji">🌱</span>
-                <span className="eyebrow">YOU’RE GROWING EVERY DAY</span>
-                <h2>Look at you go.</h2>
-                <p className="modal-description">Every little lesson counts. {user.demo && 'Your demo starts with sample XP, words, and a streak; new lesson activity is real.'}</p>
-                
+                <div className="streak-modal-hero">
+                  <div className="streak-mascot-wrap">
+                    <Mascot pose="wave" size={72} />
+                  </div>
+                  <span className="eyebrow">YOUR LEARNING PROGRESS</span>
+                  <h2>{progress.streak > 0 ? `${progress.streak} Day Streak!` : 'Keep Growing!'}</h2>
+                  <p className="modal-description">
+                    {progress.streak > 0
+                      ? 'You’re on fire! Practice today to keep your streak glowing and earn bonus XP.'
+                      : 'Every little lesson counts. Complete a session today to start your streak.'}
+                  </p>
+                </div>
+
                 <div className="progress-modal-grid">
                   <div className="progress-metric-card fire">
                     <div className="metric-icon-bubble"><Flame size={20} /></div>
@@ -1317,7 +1301,7 @@ function App() {
                     >
                       <div className="profile-hub-icon"><BarChart3 size={20} /></div>
                       <div className="profile-hub-info">
-                        <strong>My Progress & Milestones</strong>
+                        <strong>Progress & Milestones</strong>
                         <p>Streak, XP & achievements</p>
                       </div>
                       <span className="profile-hub-badge">{progress.completed?.length || 0} done</span>
@@ -1616,7 +1600,7 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
         <span className="eyebrow">{result.passed ? 'A LITTLE WIN, A BIG FEELING' : 'THIS IS HOW GROWTH HAPPENS'}</span>
         <h2>{result.passed ? 'Look at you go!' : 'Let’s give it another go.'}</h2>
         <p>{result.passed ? 'Another little step toward a more confident you.' : 'Every mistake is a chance to learn. Score 3 out of 5 to unlock the next level.'}</p>
-        
+
         <div className="lesson-result-stats">
           <div><strong>{result.correct} / {result.total}</strong><span>correct answers</span></div>
           <div><strong>+{result.earned}</strong><span>{result.alreadyCompleted ? 'XP earned (already mastered)' : 'XP earned'}</span></div>
@@ -1662,7 +1646,7 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
   if (stage === 'learn') {
     return (
       <>
-        <div className="lesson-header">
+        <div className="lesson-header" style={{ paddingRight: '48px' }}>
           <span className={'lesson-mini-icon ' + (curriculum.accentColor || lesson.color || 'lime')}>{curriculum.icon || lesson.icon || '📖'}</span>
           <div>
             <span className="eyebrow">
@@ -1766,7 +1750,7 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
   return (
     <>
       {/* SCREEN 4: TOPBAR WITH PROGRESS AND HEARTS */}
-      <div className="lesson-top-bar">
+      <div className="lesson-top-bar" style={{ paddingRight: '48px' }}>
         <div className="lesson-progress-segmented">
           <i style={{ width: `${(index / exercises.length) * 100}%` }} />
         </div>
@@ -1813,7 +1797,7 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
             const btnClass = checked
               ? (isCorrectOption ? 'correct' : isWrongSelection ? 'incorrect' : '')
               : (isSelected ? 'selected' : '');
-            
+
             const art = renderChoiceArt(opt);
 
             if (hasVisualChoices) {

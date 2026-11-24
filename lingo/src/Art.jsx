@@ -30,9 +30,6 @@ export function Mascot({ pose = 'wave', size = 80, className = '' }) {
           <stop offset="0%" stopColor="#ffb03a" />
           <stop offset="100%" stopColor="#e07b00" />
         </linearGradient>
-        <filter id="softMascotShadow" x="-10%" y="-10%" width="120%" height="130%">
-          <feDropShadow dx="0" dy="5" stdDeviation="4" floodColor="#367000" floodOpacity="0.25" />
-        </filter>
       </defs>
 
       {/* Ground Shadow */}
@@ -40,8 +37,8 @@ export function Mascot({ pose = 'wave', size = 80, className = '' }) {
 
       {/* Backpack visible on side when walking or reading */}
       {(pose === 'walk' || pose === 'read') && (
-        <g id="mascot-backpack" filter="url(#softMascotShadow)">
-          <rect x="106" y="74" width="26" height="34" rx="10" fill="url(#mascotBackpack)" stroke="#b56200" strokeWidth="2.5" />
+        <g id="mascot-backpack">
+          <rect x="106" y="74" width="26" height="34" rx="10" fill="#ff9600" stroke="#b56200" strokeWidth="2.5" />
           <rect x="112" y="80" width="14" height="12" rx="4" fill="#ffd176" stroke="#b56200" strokeWidth="1.5" />
           {/* Straps */}
           <path d="M107 78 Q95 76 86 84" stroke="#c96d00" strokeWidth="3" strokeLinecap="round" fill="none" />
@@ -50,32 +47,32 @@ export function Mascot({ pose = 'wave', size = 80, className = '' }) {
       )}
 
       {/* Main Sprout Body */}
-      <g id="mascot-body" filter="url(#softMascotShadow)">
+      <g id="mascot-body">
         {/* Plump friendly pear/egg shape */}
         <path
           d="M80 34 C112 34 126 62 126 96 C126 126 108 142 80 142 C52 142 34 126 34 96 C34 62 48 34 80 34 Z"
-          fill="url(#mascotBodyGrad)"
+          fill="#58cc02"
           stroke="#3d8e01"
           strokeWidth="3.5"
         />
         {/* Soft belly highlight */}
-        <ellipse cx="80" cy="100" rx="30" ry="24" fill="#a4f358" opacity="0.45" />
+        <ellipse cx="80" cy="100" rx="30" ry="24" fill="#a4f358" opacity="0.65" />
       </g>
 
       {/* Leaves on top of head */}
       <g id="mascot-leaves">
         {/* Left main leaf */}
         <path
-          d="M78 35 C70 12 50 10 44 20 C38 32 60 38 76 37"
-          fill="url(#mascotLeafGrad)"
+          d="M78 35 C70 12 50 10 44 20 C38 32 60 38 76 37 Z"
+          fill="#58cc02"
           stroke="#388200"
           strokeWidth="2.5"
           strokeLinejoin="round"
         />
         {/* Right smaller leaf */}
         <path
-          d="M82 34 C94 14 116 16 118 28 C120 40 98 40 82 38"
-          fill="url(#mascotLeafGrad)"
+          d="M82 34 C94 14 116 16 118 28 C120 40 98 40 82 38 Z"
+          fill="#58cc02"
           stroke="#388200"
           strokeWidth="2.5"
           strokeLinejoin="round"

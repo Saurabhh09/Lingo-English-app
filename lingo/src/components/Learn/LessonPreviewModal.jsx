@@ -17,7 +17,7 @@ export function LessonPreviewModal({ lesson, onClose, onStartReal, isLocked, pre
         .then(data => {
           if (active && data) setCurriculumData(data);
         })
-        .catch(() => {});
+        .catch(() => { });
     }
     return () => { active = false; };
   }, [targetId, isCheckpoint]);
@@ -35,7 +35,7 @@ export function LessonPreviewModal({ lesson, onClose, onStartReal, isLocked, pre
           <span className={`preview-modal-badge ${lesson.color || 'lime'} ${isCheckpoint ? 'checkpoint-badge' : ''}`}>
             {isCheckpoint ? <Trophy size={28} /> : (lesson.icon || '📖')}
           </span>
-          <div className="preview-modal-meta">
+          <div className="preview-modal-meta" style={{ paddingRight: '40px' }}>
             <span className="eyebrow">
               {isCheckpoint ? 'MILESTONE ASSESSMENT' : (curriculumData?.levelCode ? `${curriculumData.levelCode} · ${lesson.levelLabel || 'LESSON'}` : (lesson.levelLabel || (lesson.type ? lesson.type.toUpperCase() : 'LESSON PREVIEW')))}
             </span>
