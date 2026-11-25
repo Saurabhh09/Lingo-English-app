@@ -1,11 +1,10 @@
 import React from 'react';
-import { Trophy, ArrowRight, Sparkles, CheckCircle2, XCircle, Clock, Target, Award, LogOut } from 'lucide-react';
-import { PlayerList } from './PlayerList.jsx';
+import { Trophy, Clock, Target, CheckCircle2, Timer, ArrowRight, Zap } from 'lucide-react';
 
 /**
- * FinishedGame presentation component for Lingo multiplayer.
- * Displays celebration header, user's final score, winner announcement,
- * detailed performance breakdown, full room ranking, and replay/return action.
+ * FinishedGame: Redesigned Friends Mode Leaderboard & Podium Results Screen.
+ * Follows the Top-3 Podium + Ranked List reference adapted cleanly into Lingo's cream/green/gold theme,
+ * while highlighting accuracy, correct counts, timeouts, and live standing status.
  */
 export function FinishedGame({
   game,
@@ -14,11 +13,10 @@ export function FinishedGame({
 }) {
   const activeSorted = [...(game.members || [])]
     .filter(m => m.role !== 'spectator')
-    .sort((a, b) => (b.score || 0) - (a.score || 0));
+    .sort((a, b) => (b.score || 0) - (a.score || 0) || (b.stats?.accuracy || 0) - (a.stats?.accuracy || 0));
+
   const mine = game.members?.find(m => m.username === user.username);
   const isSpectator = mine?.role === 'spectator';
-  const winner = activeSorted[0] || game.members?.[0];
-  const isTopWinner = !isSpectator && activeSorted[0]?.username === user.username;
   const myRank = !isSpectator ? activeSorted.findIndex(m => m.username === user.username) + 1 : null;
   const stats = mine?.stats || game.stats || {
     correct: 0,
@@ -29,136 +27,191 @@ export function FinishedGame({
     total: game.total || 0
   };
 
+  const first = activeSorted[0] || null;
+  const second = activeSorted[1] || null;
+  const third = activeSorted[2] || null;
+  const remainingPlayers = activeSorted.slice(3);
+
+  const avatarColorFor = idx => ['#fef08a', '#dbeafe', '#fed7aa', '#dcfce7', '#f3e8ff'][idx % 5];
+
   return (
-    <div className="room-main panel finished-game-view">
-      {/* Celebration Header */}
-      <div className="celebration" aria-hidden="true">
-        <span>✦</span>
-        <Trophy size={62} />
-        <span>✧</span>
-      </div>
-
-      <span className="eyebrow">GOOD WORDS. GREAT EFFORT.</span>
-      <h2>That was a little brilliant.</h2>
-      <p style={{ maxWidth: '440px', color: '#68775c', margin: '0 auto' }}>
-        {isSpectator
-          ? 'Match concluded! What an exciting round of English practice.'
-          : isTopWinner
-          ? 'You topped the leaderboard! Look at all those quick, accurate answers.'
-          : 'Every round is another step forward. Wonderful effort!'}
-      </p>
-
-      {/* Result Score Card (Preserves .result-score strong for automated testing) */}
-      <div className="result-card-banner">
-        <div className="result-score">
-          <strong>{isSpectator ? 'Observing' : (mine?.score || 0)}</strong>
-          <span>{isSpectator ? 'spectator host' : 'your points'}</span>
+    <div className="solo-flow-page friends-leaderboard-page">
+      {/* Header */}
+      <header className="friends-lb-header">
+        <div>
+          <span className="friends-lb-status-pill">
+            {game.status === 'playing' ? '● LIVE STANDINGS' : '★ FINAL LEADERBOARD'}
+          </span>
+          <h2 className="friends-lb-title">Leaderboard</h2>
+          <p className="friends-lb-subtitle">
+            {game.topic} · {game.difficulty}
+          </p>
         </div>
-        <p className="result-winner" style={{ margin: '8px 0 0', fontWeight: 600, color: '#3f522f' }}>
-          🏆 {winner?.name || 'Everyone'} {game.status === 'playing' ? 'currently leads' : 'takes the win'} with {winner?.score || 0} points!
-        </p>
-      </div>
+
+        {/* Hidden/Clean Score Hook preserving .result-score strong for existing assertions */}
+        <div className="friends-my-score-badge result-score">
+          <Zap size={15} fill="currentColor" />
+          <div>
+            <strong>{isSpectator ? '0' : (mine?.score || 0)}</strong>
+            <span>pts</span>
+          </div>
+        </div>
+      </header>
 
       {game.status === 'playing' && (
-        <div style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '8px',
-          background: '#f4f8ee',
-          border: '1px solid #dbe6cb',
-          borderRadius: '20px',
-          padding: '6px 14px',
-          margin: '12px auto 0',
-          fontSize: '12px',
-          color: '#46642d',
-          fontWeight: 600,
-        }}>
+        <div className="friends-live-wait-pill">
           <Clock size={14} />
-          <span>You finished all questions! Standings update as other players finish.</span>
+          <span>You finished! Standings refresh automatically as others complete.</span>
         </div>
       )}
 
-      {/* Detailed Stats Breakdown */}
+      {/* Top 3 3D Podium Showcase (2nd Left · 1st Center · 3rd Right) */}
+      <section className="friends-podium-stage" aria-label="Top three players podium">
+        <div className="friends-podium-sunburst" aria-hidden="true" />
+
+        {/* Rank 2 - Left */}
+        <div className="friends-podium-col rank-2">
+          {second ? (
+            <>
+              <div className="friends-podium-avatar-box" style={{ background: '#e0f2fe', borderColor: '#93c5fd' }}>
+                <span>{(second.name || second.username || '?').slice(0, 1).toUpperCase()}</span>
+              </div>
+              <span className="friends-podium-name">{second.name || second.username}</span>
+              <span className="friends-podium-pts">⚡ {second.score || 0}</span>
+              <span className="friends-podium-acc">{second.stats?.accuracy ?? 0}% acc</span>
+            </>
+          ) : (
+            <span className="friends-podium-empty">—</span>
+          )}
+          <div className="friends-pillar p2">
+            <div className="friends-pillar-cap" />
+            <span className="friends-pillar-num">2</span>
+          </div>
+        </div>
+
+        {/* Rank 1 - Center */}
+        <div className="friends-podium-col rank-1">
+          {first ? (
+            <>
+              <div className="friends-podium-avatar-box is-winner" style={{ background: '#fef3c7', borderColor: '#fbbf24' }}>
+                <span className="friends-winner-crown" aria-hidden="true">👑</span>
+                <span>{(first.name || first.username || '?').slice(0, 1).toUpperCase()}</span>
+              </div>
+              <span className="friends-podium-name">{first.name || first.username}</span>
+              <span className="friends-podium-pts winner">⚡ {first.score || 0}</span>
+              <span className="friends-podium-acc">{first.stats?.accuracy ?? 0}% acc</span>
+            </>
+          ) : (
+            <span className="friends-podium-empty">—</span>
+          )}
+          <div className="friends-pillar p1">
+            <div className="friends-pillar-cap" />
+            <span className="friends-pillar-num">1</span>
+          </div>
+        </div>
+
+        {/* Rank 3 - Right */}
+        <div className="friends-podium-col rank-3">
+          {third ? (
+            <>
+              <div className="friends-podium-avatar-box" style={{ background: '#ffedd5', borderColor: '#fdba74' }}>
+                <span>{(third.name || third.username || '?').slice(0, 1).toUpperCase()}</span>
+              </div>
+              <span className="friends-podium-name">{third.name || third.username}</span>
+              <span className="friends-podium-pts">⚡ {third.score || 0}</span>
+              <span className="friends-podium-acc">{third.stats?.accuracy ?? 0}% acc</span>
+            </>
+          ) : (
+            <span className="friends-podium-empty">—</span>
+          )}
+          <div className="friends-pillar p3">
+            <div className="friends-pillar-cap" />
+            <span className="friends-pillar-num">3</span>
+          </div>
+        </div>
+      </section>
+
+      {/* Personal Performance Details Strip (Rank, Accuracy, Correct, Timeouts) */}
       {!isSpectator && (
-        <div className="results-stats-grid" style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: '10px',
-          width: '100%',
-          maxWidth: '480px',
-          margin: '14px auto'
-        }}>
-          <div className="stat-pill" style={{ background: '#f6f9f0', border: '1px solid #e1e9d5', borderRadius: '10px', padding: '10px 8px', textAlign: 'center' }}>
-            <span style={{ fontSize: '10px', color: '#7a896d', fontWeight: 600, textTransform: 'uppercase' }}>Rank</span>
-            <div style={{ fontSize: '18px', fontWeight: 700, color: '#314422' }}>{myRank ? `#${myRank}` : '-'}</div>
+        <section className="friends-my-metrics-grid" aria-label="Your match summary">
+          <div className="friends-metric-box rank">
+            <Trophy size={15} />
+            <strong>{myRank ? `#${myRank}` : '-'}</strong>
+            <span>Your Rank</span>
           </div>
-          <div className="stat-pill" style={{ background: '#f6f9f0', border: '1px solid #e1e9d5', borderRadius: '10px', padding: '10px 8px', textAlign: 'center' }}>
-            <span style={{ fontSize: '10px', color: '#7a896d', fontWeight: 600, textTransform: 'uppercase' }}>Accuracy</span>
-            <div style={{ fontSize: '18px', fontWeight: 700, color: '#314422' }}>{stats.accuracy}%</div>
+          <div className="friends-metric-box acc">
+            <Target size={15} />
+            <strong>{stats.accuracy ?? 0}%</strong>
+            <span>Accuracy</span>
           </div>
-          <div className="stat-pill" style={{ background: '#f6f9f0', border: '1px solid #e1e9d5', borderRadius: '10px', padding: '10px 8px', textAlign: 'center' }}>
-            <span style={{ fontSize: '10px', color: '#7a896d', fontWeight: 600, textTransform: 'uppercase' }}>Correct</span>
-            <div style={{ fontSize: '18px', fontWeight: 700, color: '#43682b' }}>{stats.correct}/{game.total}</div>
+          <div className="friends-metric-box corr">
+            <CheckCircle2 size={15} />
+            <strong>{stats.correct ?? 0}/{game.total}</strong>
+            <span>Correct</span>
           </div>
-          <div className="stat-pill" style={{ background: '#f6f9f0', border: '1px solid #e1e9d5', borderRadius: '10px', padding: '10px 8px', textAlign: 'center' }}>
-            <span style={{ fontSize: '10px', color: '#7a896d', fontWeight: 600, textTransform: 'uppercase' }}>Timeouts</span>
-            <div style={{ fontSize: '18px', fontWeight: 700, color: '#887258' }}>{stats.timedOut}</div>
+          <div className="friends-metric-box tout">
+            <Timer size={15} />
+            <strong>{stats.timedOut ?? 0}</strong>
+            <span>Timeouts</span>
           </div>
-        </div>
+        </section>
       )}
 
-      {/* Full Leaderboard Breakdown */}
-      <div style={{ width: '100%', maxWidth: '480px', marginTop: '12px' }}>
-        <h4 style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#7a896d', marginBottom: '10px', textAlign: 'left' }}>
-          Final Standings
-        </h4>
-        <PlayerList
-          members={game.members || []}
-          hostUsername={game.host}
-          currentUsername={user.username}
-          status="finished"
-          showScores={true}
-        />
-      </div>
+      {/* Ranked Player Breakdown Rows (Rank 4+ highlighted, plus full accuracy per player) */}
+      <section className="friends-standings-card">
+        <div className="friends-standings-head">
+          <span>MATCH STANDINGS &amp; ACCURACY</span>
+          <span>{activeSorted.length} {activeSorted.length === 1 ? 'player' : 'players'}</span>
+        </div>
 
-      {/* Learning tip */}
-      <div style={{
-        width: '100%',
-        maxWidth: '480px',
-        margin: '14px auto 0',
-        padding: '12px 14px',
-        background: '#fcfdfa',
-        border: '1px solid #ebf0e4',
-        borderRadius: '12px',
-        textAlign: 'left',
-        fontSize: '12px',
-        color: '#5e6d51',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px'
-      }}>
-        <Sparkles size={18} style={{ color: '#8aa667', flexShrink: 0 }} />
-        <span>
-          {stats.accuracy >= 80
-            ? `Outstanding command of ${game.topic} (${game.cefrLevel || game.difficulty})! Ready to level up your challenge?`
-            : `Great practice with ${game.topic}. Review your word library to strengthen vocabulary for the next match.`}
-        </span>
-      </div>
+        <div className="friends-standings-list">
+          {activeSorted.map((m, idx) => {
+            const isMe = m.username === user.username;
+            const isHost = m.username === game.host;
+            const mStats = m.stats || {};
+            const acc = mStats.accuracy ?? 0;
+            const corr = mStats.correct ?? 0;
+            return (
+              <div key={m.username} className={`friends-rank-row ${isMe ? 'is-me' : ''} ${idx >= 3 ? 'is-challenger' : ''}`}>
+                <span className="friends-rank-num">{idx + 1}</span>
+                <div className="friends-rank-avatar" style={{ background: avatarColorFor(idx) }}>
+                  {(m.name || m.username || '?').slice(0, 1).toUpperCase()}
+                </div>
+                <div className="friends-rank-info">
+                  <div className="friends-rank-name-row">
+                    <b>{m.name || m.username}</b>
+                    {isMe && <span className="friends-mini-tag me">You</span>}
+                    {isHost && <span className="friends-mini-tag host">Host</span>}
+                  </div>
+                  <span className="friends-rank-sub">
+                    {acc}% accuracy · {corr}/{game.total} correct · {m.completed ? 'Finished' : `Q${Math.min(game.total, (m.index || 0) + 1)}`}
+                  </span>
+                </div>
+                <div className="friends-rank-score">
+                  <strong>{m.score || 0}</strong>
+                  <span>pts</span>
+                </div>
+              </div>
+            );
+          })}
 
-      {/* Return to Play & Learn / Next Challenge button */}
-      <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-        <button
-          className="exit-game-btn"
-          onClick={() => action('leave')}
-          style={{ width: '100%', maxWidth: '280px', justifyContent: 'center' }}
-        >
-          <LogOut size={16} /> Exit Game
-        </button>
+          {remainingPlayers.length === 0 && activeSorted.length < 3 && (
+            <div className="friends-standings-hint">
+              Share your room code with more friends to fill all 3 podium spots!
+            </div>
+          )}
+        </div>
+      </section>
 
-        <span className="room-hint">
-          Game scores stay in this room. Lesson XP is earned on your learning path.
-        </span>
-      </div>
+      {/* Primary Action */}
+      <button
+        type="button"
+        className="solo-primary-btn"
+        onClick={() => action('leave')}
+      >
+        <span>Back to Play</span>
+        <ArrowRight size={18} />
+      </button>
     </div>
   );
 }

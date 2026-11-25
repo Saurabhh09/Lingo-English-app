@@ -1,26 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Users, Clock, AlertCircle, ArrowLeft } from 'lucide-react';
-import { PlayerList } from './PlayerList.jsx';
+import { Sparkles, Users } from 'lucide-react';
+import { Mascot } from '../../Art.jsx';
 
 /**
- * CountdownLobby presentation component for Lingo multiplayer.
- * Displays "GETTING READY", countdown display, room code, joined player count,
- * and player roster.
- *
- * Designed to consume authoritative server deadline or controlled seconds prop.
- * Separation of presentation from server timing logic strictly maintained.
+ * CountdownLobby: Clean Solo-style pre-game timer screen for Friends Mode.
+ * Removes header/sidebar clutter and uses the Lingo ring countdown + mascot design.
  */
 export function CountdownLobby({
   game,
   user,
   initialSeconds = 10,
   serverDeadline = null,
-  onCancel = null,
 }) {
   const [secondsLeft, setSecondsLeft] = useState(initialSeconds);
   const memberCount = game?.members?.length || 0;
 
-  // Derive remaining countdown time authoritatively from server deadline
   useEffect(() => {
     const deadline = serverDeadline || game?.countdownDeadline;
     if (deadline) {
@@ -35,87 +29,70 @@ export function CountdownLobby({
       calc();
       const interval = setInterval(calc, 250);
       return () => clearInterval(interval);
-    } else {
-      // Local presentation mode for UI preview
-      const timer = setInterval(() => {
-        setSecondsLeft(prev => (prev > 0 ? prev - 1 : 0));
-      }, 1000);
-      return () => clearInterval(timer);
     }
+    const timer = setInterval(() => {
+      setSecondsLeft(prev => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
   }, [serverDeadline, game?.countdownDeadline, game?.serverTime, game?.clientReceivedAt, initialSeconds]);
 
+  const ringRadius = 56;
+  const ringCircumference = 2 * Math.PI * ringRadius;
+  const ringOffset = ringCircumference * (1 - Math.min(10, Math.max(0, secondsLeft)) / 10);
+
   return (
-    <div className="room-main panel countdown-overlay-card">
-      <div className="countdown-badge-pill" role="status">
-        <Sparkles size={14} />
-        <span>GETTING READY · GAME STARTING</span>
-      </div>
+    <div className="solo-flow-page solo-countdown-stage">
+      <div className="solo-countdown-card">
+        <div className="solo-countdown-pill">
+          <Sparkles size={13} />
+          <span>FRIENDS CHALLENGE · {memberCount} {memberCount === 1 ? 'PLAYER' : 'PLAYERS'}</span>
+        </div>
 
-      <h2 style={{ fontSize: '32px', margin: '4px 0 0', color: '#2b2338' }}>
-        Starting in
-      </h2>
+        <div className="solo-countdown-mascot" aria-hidden="true">
+          <Mascot pose="wave" size={86} />
+        </div>
 
-      {/* Prominent Animated Countdown Display */}
-      <div
-        className="countdown-ring-container"
-        aria-live="polite"
-        aria-atomic="true"
-        aria-label={`Starting in ${secondsLeft} seconds`}
-      >
-        <span className="countdown-number">{secondsLeft}</span>
-      </div>
+        <h2 className="solo-countdown-heading">Starting in</h2>
+        <p className="solo-countdown-lead">Take a quick breath—match questions load for everyone.</p>
 
-      <p className="countdown-subtext">
-        Sharpen your pencils and take a breath. English questions are loading for everyone!
-      </p>
-
-      {/* Room & Player Stats */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '16px',
-          padding: '10px 20px',
-          background: '#f8faf3',
-          border: '1px solid #e5ecd9',
-          borderRadius: '14px',
-          fontSize: '13px',
-          fontWeight: 600,
-          color: '#556546',
-        }}
-      >
-        <span>Room Code: <strong>{game?.code}</strong></span>
-        <span>•</span>
-        <span><Users size={15} style={{ verticalAlign: 'middle', marginRight: '4px' }} />{memberCount} players joined</span>
-      </div>
-
-      {/* Roster during countdown */}
-      <div style={{ width: '100%', maxWidth: '380px', marginTop: '12px' }}>
-        <h4 style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#7a896d', marginBottom: '8px', textAlign: 'left' }}>
-          Players in this round ({memberCount})
-        </h4>
-        <PlayerList
-          members={game?.members || []}
-          hostUsername={game?.host}
-          currentUsername={user?.username}
-          status="starting"
-        />
-      </div>
-
-      {onCancel && (
-        <button
-          className="text-button"
-          onClick={onCancel}
-          style={{ marginTop: '16px', fontSize: '13px', color: '#7a896d' }}
-          type="button"
+        <div
+          className="solo-timer-ring-wrap"
+          aria-live="polite"
+          aria-atomic="true"
+          aria-label={`Starting in ${secondsLeft} seconds`}
         >
-          <ArrowLeft size={14} /> Return to Waiting Lobby
-        </button>
-      )}
+          <svg viewBox="0 0 132 132" className="solo-timer-ring-svg" aria-hidden="true">
+            <circle cx="66" cy="66" r={ringRadius} className="solo-ring-track" />
+            <circle
+              cx="66"
+              cy="66"
+              r={ringRadius}
+              className="solo-ring-fill"
+              strokeDasharray={ringCircumference}
+              strokeDashoffset={ringOffset}
+            />
+          </svg>
+          <span className={`solo-countdown-digit ${secondsLeft <= 0 ? 'is-go' : ''}`}>
+            {secondsLeft > 0 ? secondsLeft : 'Go!'}
+          </span>
+        </div>
 
-      <span className="room-hint" style={{ marginTop: '10px' }}>
-        Players can still join before the timer hits zero.
-      </span>
+        {(game?.members || []).length > 0 && (
+          <div className="friends-countdown-roster">
+            <Users size={13} />
+            <span>
+              {(game.members || []).slice(0, 4).map(m => m.name || m.username).join(', ')}
+              {(game.members || []).length > 4 ? ` +${game.members.length - 4} more` : ''}
+            </span>
+          </div>
+        )}
+
+        <div className="solo-countdown-dots" aria-hidden="true">
+          <span className="is-lit" />
+          <span className={secondsLeft <= 6 ? 'is-lit' : ''} />
+          <span className={secondsLeft <= 3 ? 'is-lit' : ''} />
+        </div>
+      </div>
     </div>
   );
 }

@@ -22,107 +22,164 @@
   align-items: center;
   justify-content: space-between;
   border-radius: 24px;
-  padding: 32px 36px;
-  background: linear-gradient(135deg, #e4eed6 0%, #d5e6cb 50%, #c2dcb5 100%);
+  padding: 28px 32px;
+  background: linear-gradient(135deg, #eaf8dc 0%, #dff5cf 50%, #cef0b8 100%);
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(92, 107, 77, 0.15);
+  border: 1.5px solid #cce8b3;
+  box-shadow: 0 8px 24px rgba(88, 204, 2, 0.08);
+}
+
+.practice-banner-text {
+  flex: 1;
+  min-width: 0;
+  z-index: 1;
+}
+
+.practice-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(88, 204, 2, 0.18);
+  color: #2e7a00;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.eyebrow-sparkle {
+  color: #58cc02;
 }
 
 .practice-banner h2 {
-  font-size: 28px;
+  font-size: clamp(22px, 3.5vw, 28px);
   line-height: 1.25;
-  color: #1c2617;
-  margin: 10px 0 8px;
-  font-weight: 700;
+  color: #172611;
+  margin: 4px 0 8px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
 }
 
 .practice-banner p {
-  color: #4a5940;
-  font-size: 15px;
+  color: #425934;
+  font-size: 14px;
+  line-height: 1.5;
   margin: 0 0 16px;
   max-width: 540px;
+}
+
+.practice-banner-mascot {
+  flex-shrink: 0;
+  margin-left: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.08));
+  animation: floatMascot 4s ease-in-out infinite;
+}
+
+@keyframes floatMascot {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
 }
 
 .practice-stats-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
 .practice-stats-pills span {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 14px;
+  padding: 6px 13px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(8px);
-  font-size: 13px;
-  font-weight: 600;
-  color: #2d3b26;
-  border: 1px solid rgba(92, 107, 77, 0.15);
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  color: #2b451b;
+  border: 1.5px solid #dceed0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+}
+
+.practice-stats-pills .pill-mastered {
+  background: #fef7da;
+  color: #9c6300;
+  border-color: #f7e49c;
 }
 
 /* Practice Tabs Navigation */
 .practice-nav-tabs {
-  display: flex;
-  gap: 8px;
-  background: #f0f2eb;
-  padding: 6px;
-  border-radius: 16px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  background: #edf3e7;
+  padding: 8px;
+  border-radius: 20px;
   box-sizing: border-box;
   width: 100%;
-  max-width: 100%;
-  min-width: 0;
-}
-
-.practice-nav-tabs::-webkit-scrollbar {
-  display: none;
+  border: 1.5px solid #dce8d3;
+  touch-action: pan-y;
+  user-select: none;
 }
 
 .practice-tab-btn {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 10px 18px;
+  padding: 12px 14px;
   border: none;
-  background: transparent;
-  border-radius: 12px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #55624d;
+  background: #ffffff;
+  border-radius: 14px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #4b6338;
   cursor: pointer;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-  flex-shrink: 0;
-  scroll-snap-align: start;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+  border: 1.5px solid #e1ecda;
+  min-height: 48px;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .practice-tab-btn:hover {
-  color: #1f2a1b;
-  background: rgba(255, 255, 255, 0.5);
+  background: #f7faf3;
+  border-color: #c9e0b8;
+  color: #2d451e;
+  transform: translateY(-1px);
+}
+
+.practice-tab-btn:active {
+  transform: translateY(1px);
 }
 
 .practice-tab-btn.active {
-  background: #ffffff;
-  color: #1b2616;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  background: #58cc02;
+  color: #ffffff;
+  border-color: #46a302;
+  box-shadow: 0 4px 12px rgba(88, 204, 2, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
 .practice-tab-badge {
   font-size: 11px;
-  padding: 2px 7px;
+  padding: 2px 8px;
   border-radius: 999px;
-  background: #e1edd8;
-  color: #385028;
-  font-weight: 700;
+  background: #eef7e6;
+  color: #385e21;
+  font-weight: 800;
+  transition: all 0.18s ease;
+}
+
+.practice-tab-btn.active .practice-tab-badge {
+  background: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
 }
 
 /* Layout Grid for Practice Modules */
@@ -272,24 +329,33 @@
   height: 48px;
   border-radius: 50%;
   border: none;
-  background: #2a3d20;
+  background: #58cc02;
+  border-bottom: 3px solid #46a302;
   color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(88, 204, 2, 0.3);
 }
 
 .audio-play-btn:hover:not(:disabled) {
-  background: #3c572e;
-  transform: scale(1.05);
+  background: #46a302;
+  transform: translateY(-1px);
+}
+
+.audio-play-btn:active:not(:disabled) {
+  transform: translateY(2px);
+  border-bottom-width: 1px;
 }
 
 .audio-play-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  background: #cbd5c5;
+  border-bottom-color: #aab8a3;
 }
 
 .audio-track-info {
@@ -319,10 +385,11 @@
 .audio-scrubber::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  background: #2f4523;
+  background: #58cc02;
+  box-shadow: 0 2px 5px rgba(88, 204, 2, 0.4);
   cursor: pointer;
 }
 
@@ -491,23 +558,30 @@
   height: 64px;
   border-radius: 50%;
   border: none;
-  background: #2a3d20;
+  background: #58cc02;
+  border-bottom: 4px solid #46a302;
   color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.25s ease;
-  box-shadow: 0 4px 14px rgba(42, 61, 32, 0.2);
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(88, 204, 2, 0.35);
 }
 
 .mic-action-btn:hover:not(:disabled) {
-  transform: scale(1.08);
-  background: #3c572e;
+  transform: translateY(-2px);
+  background: #46a302;
+}
+
+.mic-action-btn:active:not(:disabled) {
+  transform: translateY(2px);
+  border-bottom-width: 2px;
 }
 
 .mic-action-btn.active {
   background: #d84534;
+  border-bottom-color: #a82e20;
   animation: pulseMic 1.5s infinite;
 }
 
@@ -704,9 +778,10 @@
 
 .ai-message-bubble.user {
   align-self: flex-end;
-  background: #2b3e21;
+  background: #58cc02;
   color: #ffffff;
   border-bottom-right-radius: 4px;
+  box-shadow: 0 2px 8px rgba(88, 204, 2, 0.2);
 }
 
 .ai-message-bubble.assistant {
@@ -809,19 +884,25 @@
 .ai-send-btn {
   width: 40px;
   height: 40px;
-  border-radius: 10px;
+  border-radius: 12px;
   border: none;
-  background: #2c3f22;
+  background: #58cc02;
+  border-bottom: 2px solid #46a302;
   color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 8px rgba(88, 204, 2, 0.25);
 }
 
 .ai-send-btn:hover:not(:disabled) {
-  background: #405c31;
+  background: #46a302;
+}
+
+.ai-send-btn:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .ai-send-btn:disabled {
@@ -858,25 +939,33 @@
 /* Responsive Adaptations for Practice Hub */
 @media (max-width: 768px) {
   .practice-page {
-    gap: 18px;
+    gap: 16px;
     width: 100%;
     box-sizing: border-box;
   }
 
   .practice-banner {
-    padding: 20px 16px;
-    border-radius: 18px;
+    padding: 22px 18px;
+    border-radius: 20px;
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 14px;
+  }
+
+  .practice-banner-mascot {
+    align-self: center;
+    margin: 0;
   }
 
   .practice-banner h2 {
-    font-size: clamp(20px, 5.5vw, 24px);
+    font-size: clamp(20px, 5vw, 24px);
     line-height: 1.25;
-    margin: 8px 0 6px;
+    margin: 4px 0 6px;
   }
 
   .practice-banner p {
-    font-size: 11.5px;
-    line-height: 1.5;
+    font-size: 13px;
+    line-height: 1.45;
     margin: 0 0 14px;
     max-width: 100%;
   }
@@ -886,21 +975,24 @@
   }
 
   .practice-stats-pills span {
-    font-size: 11px;
+    font-size: 11.5px;
     padding: 5px 11px;
     border-radius: 999px;
   }
 
   .practice-nav-tabs {
-    padding: 5px;
-    gap: 6px;
+    grid-template-columns: repeat(2, 1fr);
+    padding: 6px;
+    gap: 8px;
+    border-radius: 16px;
   }
 
   .practice-tab-btn {
-    padding: 8px 14px;
-    font-size: 12.5px;
-    border-radius: 10px;
-    min-height: 38px;
+    padding: 10px 10px;
+    font-size: 13px;
+    border-radius: 12px;
+    min-height: 46px;
+    gap: 6px;
   }
 
   .practice-panel {
@@ -1079,4 +1171,44 @@
     height: 38px;
     flex-shrink: 0;
   }
+}
+
+/* Practice 3D Buttons & Theme Harmony */
+.practice-page .button.dark,
+.practice-page button.button.dark {
+  background: #58cc02 !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-bottom: 4px solid #46a302 !important;
+  border-radius: 14px !important;
+  font-weight: 800 !important;
+  padding: 12px 22px !important;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(88, 204, 2, 0.25) !important;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.practice-page .button.dark:hover:not(:disabled),
+.practice-page button.button.dark:hover:not(:disabled) {
+  background: #46a302 !important;
+  transform: translateY(-1px);
+}
+
+.practice-page .button.dark:active:not(:disabled),
+.practice-page button.button.dark:active:not(:disabled) {
+  transform: translateY(2px);
+  border-bottom-width: 2px !important;
+}
+
+.practice-page .button.dark:disabled,
+.practice-page button.button.dark:disabled {
+  background: #e2e8df !important;
+  border-bottom: 4px solid #cbd5c5 !important;
+  color: #9aa895 !important;
+  box-shadow: none !important;
+  cursor: not-allowed;
 }

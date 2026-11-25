@@ -2,7 +2,7 @@ import React from 'react';
 
 /**
  * Adorable Lingo Sprout Mascot
- * Poses: 'walk', 'peek', 'read', 'listen', 'celebrate', 'cheer', 'wave'
+ * Poses: 'walk', 'peek', 'read', 'listen', 'celebrate', 'cheer', 'wave', 'study', 'sad'
  */
 export function Mascot({ pose = 'wave', size = 80, className = '' }) {
   const s = size;
@@ -12,7 +12,7 @@ export function Mascot({ pose = 'wave', size = 80, className = '' }) {
       height={s}
       viewBox="0 0 160 160"
       fill="none"
-      className={`lingo-mascot ${className}`}
+      className={`lingo-mascot pose-${pose} ${className}`}
       role="img"
       aria-label="Lingo Sprout Mascot"
     >
@@ -82,8 +82,8 @@ export function Mascot({ pose = 'wave', size = 80, className = '' }) {
       </g>
 
       {/* Rosy Blushing Cheeks */}
-      <ellipse cx="56" cy="94" rx="8" ry="5.5" fill="#ff7b88" opacity="0.65" />
-      <ellipse cx="104" cy="94" rx="8" ry="5.5" fill="#ff7b88" opacity="0.65" />
+      <ellipse cx="56" cy="94" rx="8" ry="5.5" fill={pose === 'sad' ? '#fca5a5' : '#ff7b88'} opacity={pose === 'sad' ? '0.45' : '0.65'} />
+      <ellipse cx="104" cy="94" rx="8" ry="5.5" fill={pose === 'sad' ? '#fca5a5' : '#ff7b88'} opacity={pose === 'sad' ? '0.45' : '0.65'} />
 
       {/* Eyes */}
       <g id="mascot-eyes">
@@ -92,6 +92,17 @@ export function Mascot({ pose = 'wave', size = 80, className = '' }) {
           <>
             <path d="M58 84 Q65 76 72 84" stroke="#1f3b06" strokeWidth="4" strokeLinecap="round" fill="none" />
             <path d="M88 84 Q95 76 102 84" stroke="#1f3b06" strokeWidth="4" strokeLinecap="round" fill="none" />
+          </>
+        ) : pose === 'sad' ? (
+          // Worried / disappointed eyes + subtle brow + tiny sweat/tear drop
+          <>
+            <path d="M55 72 Q63 70 70 67" stroke="#1f3b06" strokeWidth="3.2" strokeLinecap="round" fill="none" />
+            <path d="M105 72 Q97 70 90 67" stroke="#1f3b06" strokeWidth="3.2" strokeLinecap="round" fill="none" />
+            <ellipse cx="64" cy="83" rx="6" ry="7" fill="#1b3304" />
+            <ellipse cx="96" cy="83" rx="6" ry="7" fill="#1b3304" />
+            <circle cx="62" cy="85" r="2.2" fill="#ffffff" />
+            <circle cx="94" cy="85" r="2.2" fill="#ffffff" />
+            <path d="M113 62 C117 68 117 74 113 76 C109 74 109 68 113 62 Z" fill="#60a5fa" opacity="0.9" />
           </>
         ) : (
           // Big cute shiny eyes
@@ -112,6 +123,9 @@ export function Mascot({ pose = 'wave', size = 80, className = '' }) {
         {pose === 'celebrate' || pose === 'cheer' ? (
           // Big open joyful smile with tongue
           <path d="M70 94 Q80 110 90 94 Z" fill="#9e1828" stroke="#1b3304" strokeWidth="2.5" />
+        ) : pose === 'sad' ? (
+          // Disappointed wavy frown
+          <path d="M69 102 Q75 95 80 98 Q85 95 91 102" stroke="#1b3304" strokeWidth="3" strokeLinecap="round" fill="none" />
         ) : pose === 'listen' ? (
           // Small thoughtful 'o' mouth
           <ellipse cx="80" cy="96" rx="4" ry="4.5" fill="#1b3304" />
@@ -164,23 +178,34 @@ export function Mascot({ pose = 'wave', size = 80, className = '' }) {
             <ellipse cx="102" cy="120" rx="9" ry="6" fill="#58cc02" stroke="#3d8e01" strokeWidth="2.5" />
           </>
         )}
-        {pose === 'read' && (
+        {(pose === 'read' || pose === 'study') && (
           <>
             {/* Two arms holding open book in front */}
             <path d="M48 98 Q60 110 70 106" stroke="#3d8e01" strokeWidth="6.5" strokeLinecap="round" fill="none" />
             <path d="M112 98 Q100 110 90 106" stroke="#3d8e01" strokeWidth="6.5" strokeLinecap="round" fill="none" />
             {/* Open book */}
             <g transform="translate(56, 100)">
-              <rect x="0" y="2" width="24" height="20" rx="3" fill="#1cb0f6" transform="rotate(-6)" />
-              <rect x="24" y="0" width="24" height="20" rx="3" fill="#1899d6" transform="rotate(6)" />
+              <rect x="0" y="2" width="24" height="20" rx="3" fill={pose === 'study' ? '#239b16' : '#1cb0f6'} transform="rotate(-6)" />
+              <rect x="24" y="0" width="24" height="20" rx="3" fill={pose === 'study' ? '#1b7a11' : '#1899d6'} transform="rotate(6)" />
               <rect x="2" y="3" width="21" height="18" rx="2" fill="#ffffff" transform="rotate(-6)" />
               <rect x="25" y="1" width="21" height="18" rx="2" fill="#f4faff" transform="rotate(6)" />
               {/* Lines in book */}
-              <line x1="6" y1="8" x2="19" y2="7" stroke="#90c8eb" strokeWidth="1.5" />
-              <line x1="6" y1="12" x2="19" y2="11" stroke="#90c8eb" strokeWidth="1.5" />
-              <line x1="29" y1="7" x2="42" y2="8" stroke="#90c8eb" strokeWidth="1.5" />
-              <line x1="29" y1="11" x2="42" y2="12" stroke="#90c8eb" strokeWidth="1.5" />
+              <line x1="6" y1="8" x2="19" y2="7" stroke={pose === 'study' ? '#86efac' : '#90c8eb'} strokeWidth="1.5" />
+              <line x1="6" y1="12" x2="19" y2="11" stroke={pose === 'study' ? '#86efac' : '#90c8eb'} strokeWidth="1.5" />
+              <line x1="29" y1="7" x2="42" y2="8" stroke={pose === 'study' ? '#86efac' : '#90c8eb'} strokeWidth="1.5" />
+              <line x1="29" y1="11" x2="42" y2="12" stroke={pose === 'study' ? '#86efac' : '#90c8eb'} strokeWidth="1.5" />
             </g>
+          </>
+        )}
+        {pose === 'study' && (
+          <>
+            {/* Study Headphones */}
+            <path d="M42 78 C36 36 124 36 118 78" stroke="#3b6b35" strokeWidth="6.5" strokeLinecap="round" fill="none" />
+            <rect x="33" y="66" width="13" height="26" rx="6.5" fill="#4d7c43" stroke="#2b4e24" strokeWidth="2" />
+            <rect x="114" y="66" width="13" height="26" rx="6.5" fill="#4d7c43" stroke="#2b4e24" strokeWidth="2" />
+            {/* Little magical sparkles around head */}
+            <path d="M30 46 L32 50 L36 51 L33 54 L34 58 L30 55 L26 58 L27 54 L24 51 L28 50 Z" fill="#86efac" />
+            <path d="M128 42 L130 46 L134 47 L131 50 L132 54 L128 51 L124 54 L125 50 L122 47 L126 46 Z" fill="#86efac" />
           </>
         )}
         {pose === 'listen' && (
@@ -192,6 +217,13 @@ export function Mascot({ pose = 'wave', size = 80, className = '' }) {
             {/* Cheerful hands */}
             <path d="M44 98 Q34 108 42 116" stroke="#3d8e01" strokeWidth="6" strokeLinecap="round" fill="none" />
             <path d="M116 98 Q126 108 118 116" stroke="#3d8e01" strokeWidth="6" strokeLinecap="round" fill="none" />
+          </>
+        )}
+        {pose === 'sad' && (
+          <>
+            {/* Drooping arms at sides */}
+            <path d="M44 96 Q36 112 42 122" stroke="#3d8e01" strokeWidth="6.5" strokeLinecap="round" fill="none" />
+            <path d="M116 96 Q124 112 118 122" stroke="#3d8e01" strokeWidth="6.5" strokeLinecap="round" fill="none" />
           </>
         )}
         {pose === 'celebrate' && (

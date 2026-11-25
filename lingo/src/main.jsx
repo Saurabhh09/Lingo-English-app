@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   ArrowUpRight, ArrowRight, ArrowLeft, BookOpen, LayoutGrid, Gamepad2, Headphones,
   Search, Flame, ChevronDown, ChevronRight, ChevronLeft, Check, Plus, X, Lock,
   Play, Volume2, Bookmark, Clock, Users, Copy, Trophy, Sparkles, Target, LogOut,
   Settings, CheckCircle2, Loader2, BarChart3, Leaf, Zap, Globe, RotateCcw,
-  GraduationCap, Info, ShieldCheck, Heart, User, Edit3, Smartphone, Download
+  GraduationCap, Info, ShieldCheck, Heart, User, Edit3, Smartphone, Download, Gem
 } from 'lucide-react';
 import { getApiUrl, isNativePlatform, requestApi } from './apiConfig.js';
 import {
@@ -13,16 +13,29 @@ import {
   AppleIllustration, CupIllustration, DogIllustration, CatIllustration
 } from './Art.jsx';
 import { lessons } from '../content.js';
+import { getCheckpointUnitLessons, getPrecedingCheckpointForLesson, getNextPathItem } from './curriculumData.js';
 import './style.css';
 import './components/Learn/learn.css';
 import './components/Games/games.css';
+import './components/Achievements/achievements.css';
+import './components/Rewards/rewards.css';
 import { Learn } from './components/Learn/Learn.jsx';
 import { PracticeHub } from './components/Practice/PracticeHub.jsx';
 import { GamesSetup as Games } from './components/Games/GamesSetup.jsx';
 import { GameRoom } from './components/Games/GameRoom.jsx';
 import { SoloGameRoom } from './components/Games/SoloGameRoom.jsx';
+import { BadgeUnlockModal } from './components/Achievements/BadgeUnlockModal.jsx';
+import { AchievementsSection } from './components/Achievements/AchievementsSection.jsx';
+import { BadgeArtwork } from './components/Achievements/BadgeArtwork.jsx';
+import { RewardOpeningModal } from './components/Rewards/RewardOpeningModal.jsx';
+import { RewardHistorySection } from './components/Rewards/RewardHistorySection.jsx';
+import { BADGE_CATALOG } from '../server/badgeCatalog.mjs';
+import { evaluateAchievements } from '../server/achievementEngine.mjs';
+import { REWARD_BY_ID } from '../server/rewardDefinitions.mjs';
+import { evaluateRewards, claimReward as claimRewardLocal } from '../server/rewardEngine.mjs';
+import { getOrCreateStableShuffle, clearStableShufflesByPrefix, toOriginalIndex, toDisplayIndex, recordCorrectPositionMetric } from '../server/optionShuffler.mjs';
 
-const pages = ['home', 'learn', 'practice', 'games'];
+const pages = ['home', 'learn', 'practice', 'games', 'profile'];
 const words = [
   { word: 'Serendipity', phonetic: '/ˌser.ənˈdɪp.ə.ti/', type: 'noun', meaning: 'The happy chance of finding something wonderful when you weren’t looking for it.', example: 'Finding this little café was pure serendipity.' },
   { word: 'Resilient', phonetic: '/rɪˈzɪl.i.ənt/', type: 'adjective', meaning: 'Able to recover and feel strong again after a difficulty.', example: 'She stayed resilient through every challenge.' },
@@ -54,6 +67,191 @@ function App() {
   const [avatarColor, setAvatarColor] = useState(() => localStorage.getItem('lingo-avatar-color') || 'lime');
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
+  const [activeLessonPage, setActiveLessonPage] = useState(null);
+  const [confirmLeaveLesson, setConfirmLeaveLesson] = useState(false);
+  const [badgeCatalog, setBadgeCatalog] = useState(BADGE_CATALOG);
+  const [badgeQueue, setBadgeQueue] = useState([]);
+  const [selectedBadgeDetail, setSelectedBadgeDetail] = useState(null);
+  const [rewardQueue, setRewardQueue] = useState([]);
+  const [claimingRewardId, setClaimingRewardId] = useState(null);
+  const seenBadgeIdsRef = useRef(new Set());
+
+  const enqueueUnlockedBadges = list => {
+    if (!Array.isArray(list) || !list.length) return;
+    setBadgeQueue(prev => {
+      const existingIds = new Set(prev.map(b => b.id));
+      const additions = [];
+      for (const item of list) {
+        if (!item?.id || existingIds.has(item.id)) continue;
+        const catalogMeta = badgeCatalog.find(b => b.id === item.id) || BADGE_CATALOG.find(b => b.id === item.id) || {};
+        additions.push({ ...catalogMeta, ...item });
+        existingIds.add(item.id);
+        seenBadgeIdsRef.current.add(item.id);
+      }
+      return additions.length ? [...prev, ...additions] : prev;
+    });
+  };
+
+  const badgeStorageKey = username => `lingo-badges:${username || 'guest'}`;
+  const loadStoredBadges = username => {
+    try {
+      const raw = localStorage.getItem(badgeStorageKey(username));
+      const parsed = raw ? JSON.parse(raw) : {};
+      return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
+  const saveStoredBadges = (username, badges) => {
+    try {
+      localStorage.setItem(badgeStorageKey(username), JSON.stringify(badges || {}));
+    } catch { }
+  };
+
+  const rewardsStorageKey = username => `lingo-rewards:${username || 'guest'}`;
+  const loadStoredRewards = username => {
+    try {
+      const raw = localStorage.getItem(rewardsStorageKey(username));
+      const parsed = raw ? JSON.parse(raw) : {};
+      return (parsed && typeof parsed === 'object') ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
+  const saveStoredRewards = (username, p) => {
+    try {
+      localStorage.setItem(rewardsStorageKey(username), JSON.stringify({
+        rewards: p?.rewards || {},
+        walletLedger: p?.walletLedger || [],
+        certificates: p?.certificates || {}
+      }));
+    } catch { }
+  };
+
+  const checkpointStorageKey = username => `lingo-checkpoints:${username || 'guest'}`;
+  const loadStoredCheckpoints = username => {
+    try {
+      const raw = localStorage.getItem(checkpointStorageKey(username));
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+  const mergeCheckpoints = (p, username) => {
+    if (!p) return p;
+    const local = loadStoredCheckpoints(username);
+    const mergedCheckpoints = Array.from(new Set([...(p.checkpoints || []), ...local]));
+    const storedBadges = loadStoredBadges(username);
+    const storedRw = loadStoredRewards(username);
+
+    const mergedLedger = Array.isArray(p.walletLedger) ? [...p.walletLedger] : [];
+    const serverTxIds = new Set(mergedLedger.map(tx => tx.id));
+    let extraXp = 0;
+    let extraGems = 0;
+    for (const localTx of (storedRw.walletLedger || [])) {
+      if (localTx?.id && !serverTxIds.has(localTx.id)) {
+        serverTxIds.add(localTx.id);
+        mergedLedger.push(localTx);
+        if (localTx.currency === 'xp') extraXp += Number(localTx.amount || 0);
+        if (localTx.currency === 'gems') extraGems += Number(localTx.amount || 0);
+      }
+    }
+
+    const mergedRewards = { ...(storedRw.rewards || {}) };
+    for (const [rwId, srvRec] of Object.entries(p.rewards || {})) {
+      const prev = mergedRewards[rwId];
+      if (!prev || prev.status !== 'claimed' || srvRec.status === 'claimed') {
+        mergedRewards[rwId] = srvRec;
+      }
+    }
+
+    const nextP = {
+      ...p,
+      xp: (p.xp || 0) + extraXp,
+      gems: (p.gems || 0) + extraGems,
+      checkpoints: mergedCheckpoints,
+      badges: { ...storedBadges, ...(p.badges || {}) },
+      rewards: mergedRewards,
+      walletLedger: mergedLedger,
+      certificates: { ...(storedRw.certificates || {}), ...(p.certificates || {}) }
+    };
+    // Backfill & evaluate client-side as fallback if remote backend hasn't synced achievement/reward tables yet
+    try {
+      evaluateAchievements(nextP, { type: 'backfill' });
+      evaluateRewards(nextP);
+      saveStoredBadges(username, nextP.badges);
+      saveStoredRewards(username, nextP);
+    } catch { }
+    return nextP;
+  };
+  const applyProgress = (p, username = user?.username, { detectNewBadges = true } = {}) => {
+    const merged = mergeCheckpoints(p, username);
+    if (merged && detectNewBadges && merged.badges) {
+      const newlyEarned = [];
+      for (const [id, rec] of Object.entries(merged.badges)) {
+        if (!seenBadgeIdsRef.current.has(id)) {
+          seenBadgeIdsRef.current.add(id);
+          newlyEarned.push({ id, ...rec });
+        }
+      }
+      if (newlyEarned.length) enqueueUnlockedBadges(newlyEarned);
+    }
+    setProgress(merged);
+  };
+
+  async function handleClaimReward(rewardId) {
+    if (!rewardId || claimingRewardId) return;
+    const uname = user?.username;
+    setClaimingRewardId(rewardId);
+    try {
+      const res = await api('/rewards/' + encodeURIComponent(rewardId) + '/claim', {});
+      if (res?.progress) {
+        if (Array.isArray(res.newlyUnlockedBadges)) {
+          for (const b of res.newlyUnlockedBadges) {
+            if (b?.id) seenBadgeIdsRef.current.add(b.id);
+          }
+        }
+        saveStoredRewards(uname, res.progress);
+        applyProgress(res.progress, uname, { detectNewBadges: false });
+        const rwDef = res.reward || REWARD_BY_ID.get(rewardId);
+        const primaryBadge = rwDef?.badgeId
+          ? (badgeCatalog.find(b => b.id === rwDef.badgeId) || res.newlyUnlockedBadges?.find(b => b.id === rwDef.badgeId) || null)
+          : null;
+        if (!res.alreadyClaimed && rwDef) {
+          setRewardQueue(prev => [...prev, { reward: rwDef, xpAdded: res.xpAdded, gemsAdded: res.gemsAdded, badge: primaryBadge }]);
+        } else if (res.alreadyClaimed) {
+          notify('This reward chest has already been claimed.');
+        }
+      }
+    } catch (err) {
+      if (err?.status === 404 || /not found|404/i.test(err?.message || '')) {
+        try {
+          const clone = structuredClone(progress || {});
+          const res = claimRewardLocal(clone, rewardId);
+          saveStoredBadges(uname, clone.badges);
+          saveStoredRewards(uname, clone);
+          for (const b of (res.newlyUnlockedBadges || [])) {
+            if (b?.id) seenBadgeIdsRef.current.add(b.id);
+          }
+          setProgress(clone);
+          const rwDef = res.reward || REWARD_BY_ID.get(rewardId);
+          const primaryBadge = rwDef?.badgeId
+            ? (badgeCatalog.find(b => b.id === rwDef.badgeId) || res.newlyUnlockedBadges?.find(b => b.id === rwDef.badgeId) || null)
+            : null;
+          if (!res.alreadyClaimed && rwDef) {
+            setRewardQueue(prev => [...prev, { reward: rwDef, xpAdded: res.xpAdded, gemsAdded: res.gemsAdded, badge: primaryBadge }]);
+          }
+        } catch (localErr) {
+          notify(localErr?.message || 'Finish the required lessons to unlock this reward.');
+        }
+      } else {
+        notify(err?.message || 'Unable to claim reward yet.');
+      }
+    } finally {
+      setClaimingRewardId(null);
+    }
+  }
 
   const token = useRef(localStorage.getItem('lingo-token'));
   const toastTimer = useRef();
@@ -80,9 +278,15 @@ function App() {
       d.user.name = customName;
     }
     setUser(d.user);
-    setProgress(d.progress);
+    const mergedProg = mergeCheckpoints(d.progress, d.user?.username);
+    seenBadgeIdsRef.current = new Set(Object.keys(mergedProg?.badges || {}));
+    setProgress(mergedProg);
     setGame(null);
+    setActiveLessonPage(null);
     setAuthModal(null);
+    if (Array.isArray(d.newlyUnlockedBadges) && d.newlyUnlockedBadges.length) {
+      enqueueUnlockedBadges(d.newlyUnlockedBadges);
+    }
     localStorage.removeItem('lingo-game');
     localStorage.removeItem('lingo-solo');
   };
@@ -109,7 +313,18 @@ function App() {
           d.user.name = customName;
         }
         setUser(d.user);
-        setProgress(d.progress);
+        const mergedProg = mergeCheckpoints(d.progress, d.user?.username);
+        const existingBadgeIds = new Set(Object.keys(mergedProg?.badges || {}));
+        const backfilled = Array.isArray(d.newlyUnlockedBadges) ? d.newlyUnlockedBadges : [];
+        for (const b of backfilled) existingBadgeIds.delete(b.id);
+        seenBadgeIdsRef.current = existingBadgeIds;
+        setProgress(mergedProg);
+        if (backfilled.length) enqueueUnlockedBadges(backfilled);
+        api('/badges')
+          .then(res => {
+            if (Array.isArray(res?.badges) && res.badges.length) setBadgeCatalog(res.badges);
+          })
+          .catch(() => { });
         const soloStored = localStorage.getItem('lingo-solo');
         if (soloStored) {
           try {
@@ -174,30 +389,31 @@ function App() {
     initialize();
     if (isNativePlatform()) {
       import('@capacitor/status-bar').then(({ StatusBar, Style }) => {
-        StatusBar.setStyle({ style: Style.Light }).catch(() => {});
-        StatusBar.setBackgroundColor({ color: '#faf8f0' }).catch(() => {});
-        StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {});
-      }).catch(() => {});
+        StatusBar.setStyle({ style: Style.Light }).catch(() => { });
+        StatusBar.setBackgroundColor({ color: '#faf8f0' }).catch(() => { });
+        StatusBar.setOverlaysWebView({ overlay: false }).catch(() => { });
+      }).catch(() => { });
     }
     return () => clearTimeout(toastTimer.current);
   }, []);
 
   useEffect(() => {
-    if (!modal && !authModal) return;
+    if (!modal && !authModal && !activeLessonPage) return;
     const previous = document.activeElement;
     const frame = requestAnimationFrame(() =>
       document.querySelector('.modal input, .modal button')?.focus()
     );
     const handler = e => {
-      const dialog = document.querySelector('.modal');
-      if (!dialog) return;
       if (e.key === 'Escape') {
         e.preventDefault();
-        if (authModal) setAuthModal(null);
-        else if (modal && (modal.type !== 'lesson' || window.confirm('Leave this lesson? This attempt won’t be saved.'))) {
-          setModal(null);
-        }
+        if (confirmLeaveLesson) setConfirmLeaveLesson(false);
+        else if (authModal) setAuthModal(null);
+        else if (activeLessonPage) setConfirmLeaveLesson(true);
+        else if (modal) setModal(null);
+        return;
       }
+      const dialog = document.querySelector('.modal');
+      if (!dialog) return;
       if (e.key === 'Tab') {
         const nodes = [...dialog.querySelectorAll('button:not(:disabled),input,select,[tabindex="0"]')].filter(el => el.offsetParent !== null);
         const first = nodes[0], last = nodes[nodes.length - 1];
@@ -212,14 +428,14 @@ function App() {
     };
     document.addEventListener('keydown', handler);
     const before = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    if (modal || authModal) document.body.style.overflow = 'hidden';
     return () => {
       cancelAnimationFrame(frame);
       document.removeEventListener('keydown', handler);
       document.body.style.overflow = before;
       previous?.focus();
     };
-  }, [modal, authModal]);
+  }, [modal, authModal, activeLessonPage, confirmLeaveLesson]);
 
   function navigate(next) {
     if (next === page) return;
@@ -279,12 +495,23 @@ function App() {
 
   async function saveWord(w = word.word) {
     try {
-      const p = await api('/progress/word', { word: w });
-      setProgress(p);
-      notify(p.saved.includes(w) ? 'Added to your word library!' : 'Removed from your library.');
+      const res = await api('/progress/word', { word: w });
+      const { newlyUnlockedBadges, ...p } = res || {};
+      applyProgress(p);
+      if (Array.isArray(newlyUnlockedBadges) && newlyUnlockedBadges.length) {
+        enqueueUnlockedBadges(newlyEarnedWithMeta(newlyUnlockedBadges));
+      }
+      notify((p.saved || []).includes(w) ? 'Added to your word library!' : 'Removed from your library.');
     } catch (e) {
       notify(e.message);
     }
+  }
+
+  function newlyEarnedWithMeta(list) {
+    return (list || []).map(item => ({
+      ...(badgeCatalog.find(b => b.id === item.id) || {}),
+      ...item
+    }));
   }
 
   function speak(w = word.word) {
@@ -302,12 +529,85 @@ function App() {
   const activeLesson = lessons.find(l => !progress?.completed.includes(l.id)) || lessons[0];
 
   function openLesson(l) {
+    if (!l) return;
+    if (l.isCheckpoint) {
+      const info = getCheckpointUnitLessons(l.id);
+      const prereqs = info?.precedingRealIds || [];
+      if (!prereqs.every(id => progress.completed.includes(id))) {
+        notify('Complete all lessons in this unit to unlock the milestone.');
+        return;
+      }
+      setConfirmLeaveLesson(false);
+      setModal(null);
+      setActiveLessonPage(l);
+      window.scrollTo?.(0, 0);
+      return;
+    }
+
     const idx = lessons.indexOf(l);
     if (idx > 0 && !progress.completed.includes(lessons[idx - 1].id)) {
       notify('Finish the previous level to unlock this one.');
       return;
     }
-    setModal({ type: 'lesson', lesson: l });
+    const prevCheckpoint = getPrecedingCheckpointForLesson(l.id);
+    const doneCheckpoints = progress?.checkpoints || [];
+    if (prevCheckpoint && !doneCheckpoints.includes(prevCheckpoint.id) && !progress.completed.includes(prevCheckpoint.id) && !progress.completed.includes(l.id)) {
+      notify(`Complete ${prevCheckpoint.title} to unlock this lesson.`);
+      return;
+    }
+    setConfirmLeaveLesson(false);
+    setModal(null);
+    setActiveLessonPage(l);
+    window.scrollTo?.(0, 0);
+  }
+
+  async function completeCheckpoint(checkpointId, xpReward, questionCount, correctCount) {
+    const passed = correctCount >= Math.ceil(questionCount * 0.6);
+    const existing = progress?.checkpoints || [];
+    const fresh = !existing.includes(checkpointId);
+    let earned = 0;
+    let nextProgress = progress;
+
+    if (passed) {
+      const updatedList = Array.from(new Set([...existing, checkpointId]));
+      try {
+        localStorage.setItem(checkpointStorageKey(user?.username), JSON.stringify(updatedList));
+      } catch { }
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const yesterdayStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      earned = fresh ? (xpReward || 40) : 0;
+      nextProgress = {
+        ...progress,
+        checkpoints: updatedList,
+        xp: (progress?.xp || 0) + earned,
+        words: (progress?.words || 0) + (fresh ? questionCount : 0),
+        todayWords: ((progress?.dailyDate === todayStr ? progress?.todayWords : 0) || 0) + (fresh ? questionCount : 0),
+        dailyDate: todayStr,
+        streak: progress?.lastStudy === todayStr ? progress.streak : progress?.lastStudy === yesterdayStr ? (progress.streak || 0) + 1 : Math.max(1, progress?.streak || 0),
+        lastStudy: todayStr,
+        history: {
+          ...(progress?.history || {}),
+          [todayStr]: ((progress?.history || {})[todayStr] || 0) + (fresh ? questionCount : 0)
+        }
+      };
+      applyProgress(nextProgress, user?.username, { detectNewBadges: false });
+
+      // Best-effort server sync if checkpoint endpoint is available
+      api('/progress/checkpoint', { checkpointId, correct: correctCount, total: questionCount, xp: xpReward || 40 })
+        .then(res => {
+          if (res?.progress) applyProgress(res.progress);
+        })
+        .catch(() => { });
+    }
+
+    return {
+      progress: nextProgress,
+      correct: correctCount,
+      total: questionCount,
+      passed,
+      earned,
+      alreadyCompleted: !fresh
+    };
   }
 
   async function createGame(settings) {
@@ -379,7 +679,8 @@ function App() {
     home: ['Your little corner of learning', 'Dashboard'],
     learn: ['Small steps. Big possibilities.', 'Let’s learn'],
     practice: ['Listening, Speaking & AI Practice', 'Practice Lab'],
-    games: ['A little friendly competition', 'Play & learn']
+    games: ['A little friendly competition', 'Play & learn'],
+    profile: ['Your space, stats & badges', 'My Profile']
   };
 
   if (loading) {
@@ -521,58 +822,129 @@ function App() {
   }
 
   // LOGGED IN APP SHELL
+  if (activeLessonPage) {
+    return (
+      <div className="app-shell">
+        <div className="workspace lesson-page-workspace">
+          <div className="lesson-page-screen">
+            <div className="lesson-page-topbar">
+              <span className="lesson-page-pill">
+                {activeLessonPage.isCheckpoint ? '🏆 Milestone Review' : `📖 ${activeLessonPage.title || 'Lesson'}`}
+              </span>
+              <button
+                type="button"
+                className="lesson-page-close-btn icon-button"
+                onClick={() => setConfirmLeaveLesson(true)}
+                aria-label="Leave lesson"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="lesson-page-body">
+              <Lesson
+                lesson={activeLessonPage}
+                api={api}
+                updateProgress={applyProgress}
+                onCompleteCheckpoint={completeCheckpoint}
+                savedWords={progress?.saved || []}
+                onSaveWord={saveWord}
+                close={() => {
+                  setConfirmLeaveLesson(false);
+                  setActiveLessonPage(null);
+                }}
+                next={() => {
+                  const nextItem = getNextPathItem(activeLessonPage.id);
+                  if (!nextItem) {
+                    setActiveLessonPage(null);
+                    return;
+                  }
+                  if (nextItem.isCheckpoint) {
+                    setActiveLessonPage(nextItem);
+                    window.scrollTo?.(0, 0);
+                    return;
+                  }
+                  const nextReal = lessons.find(r => r.id === (nextItem.realLessonId || nextItem.id));
+                  if (nextReal) {
+                    setActiveLessonPage(nextReal);
+                    window.scrollTo?.(0, 0);
+                  } else {
+                    setActiveLessonPage(null);
+                  }
+                }}
+                key={activeLessonPage.id}
+              />
+            </div>
+
+            {confirmLeaveLesson && (
+              <div className="confirm-leave-overlay" role="alertdialog" aria-modal="true" aria-labelledby="leave-lesson-title">
+                <div className="confirm-leave-card">
+                  <div className="confirm-leave-mascot">
+                    <Mascot pose="walk" size={64} />
+                  </div>
+                  <span className="confirm-leave-badge">HEADS UP</span>
+                  <h3 id="leave-lesson-title">Leave this lesson?</h3>
+                  <p>Your answers for this attempt won’t be saved if you exit now.</p>
+                  <div className="confirm-leave-actions">
+                    <button
+                      type="button"
+                      className="button primary full-width"
+                      onClick={() => setConfirmLeaveLesson(false)}
+                    >
+                      Keep learning
+                    </button>
+                    <button
+                      type="button"
+                      className="button light full-width"
+                      onClick={() => {
+                        setConfirmLeaveLesson(false);
+                        setActiveLessonPage(null);
+                      }}
+                    >
+                      Leave lesson
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {toast && (
+              <div className="toast" role="status">
+                <CheckCircle2 size={18} />
+                {toast}
+                <button onClick={() => setToast('')} aria-label="Dismiss notification"><X size={15} /></button>
+              </div>
+            )}
+
+            {badgeQueue.length > 0 && (
+              <BadgeUnlockModal
+                badge={badgeQueue[0]}
+                queueCount={badgeQueue.length}
+                onContinue={() => setBadgeQueue(prev => prev.slice(1))}
+                onViewBadge={badge => {
+                  setBadgeQueue(prev => prev.slice(1));
+                  setActiveLessonPage(null);
+                  setSelectedBadgeDetail(badge);
+                  navigate('profile');
+                }}
+              />
+            )}
+
+            {rewardQueue.length > 0 && (
+              <RewardOpeningModal
+                entry={rewardQueue[0]}
+                queueCount={rewardQueue.length}
+                onContinue={() => setRewardQueue(prev => prev.slice(1))}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
-      {/* Desktop Sidebar */}
-      <aside className="sidebar">
-        <a className="brand" href="#" onClick={e => { e.preventDefault(); navigate('home'); }} aria-label="Lingo home">
-          <Sprout /><span>lingo<span className="brand-dot">.</span></span>
-        </a>
-        <div className="sidebar-tagline">Little by little. A lot better.</div>
-        <div className="nav-label">YOUR SPACE</div>
-        <nav>
-          {[
-            [LayoutGrid, 'home', 'Dashboard'],
-            [BookOpen, 'learn', 'Let’s learn'],
-            [Headphones, 'practice', 'Practice Lab'],
-            [Gamepad2, 'games', 'Play & learn']
-          ].map(([Icon, key, label]) => (
-            <button key={key} onClick={() => navigate(key)} className={'nav-item ' + (page === key ? 'active' : '')}>
-              <Icon size={20} /><span>{label}</span>
-              {page === key && <span className="nav-dot" />}
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar-divider" />
-        <button className="nav-item" onClick={() => setModal({ type: 'library' })}>
-          <Bookmark size={20} /><span>My word library</span><span className="tiny-count">{progress.saved.length}</span>
-        </button>
-        <button className="nav-item" onClick={() => setModal({ type: 'progress' })}>
-          <BarChart3 size={20} /><span>My progress</span>
-        </button>
-        <div className="sidebar-spacer" />
-        <div className="sidebar-promo">
-          <span className="promo-star">✧</span>
-          <h3>A little every day<br />goes a long way.</h3>
-          <p>Your next “aha!” is<br />just one lesson away.</p>
-          <button onClick={() => { navigate('learn'); openLesson(activeLesson); }}>
-            Let’s make it happen <ArrowUpRight size={17} />
-          </button>
-        </div>
-        {!isNative && (
-          <a href="/lingo.apk" download="lingo.apk" className="sidebar-apk-link" title="Download Android APK">
-            <Smartphone size={17} />
-            <span>Install App (APK)</span>
-            <Download size={14} className="sidebar-apk-download-icon" />
-          </a>
-        )}
-        <button className="sidebar-profile" onClick={() => setModal({ type: user.demo ? 'auth' : 'profile' })}>
-          <span className={`avatar ${avatarColor}`}>{selectedAvatar}</span>
-          <span><b>{user.name}</b><small>{user.demo ? 'Demo explorer' : 'English explorer'}</small></span>
-          <Settings size={17} />
-        </button>
-      </aside>
-
       <div className="workspace">
         {/* Topbar: Scoped exclusively to the Home screen */}
         {page === 'home' && (
@@ -581,54 +953,20 @@ function App() {
               <Mascot pose="walk" size={32} className="topbar-mascot" />
               <b>Lingo</b>
             </div>
-            <div className="breadcrumb topbar-crumb">
-              My workspace <ChevronRight size={14} /><span>{headings[page][1]}</span>
-            </div>
             <div className="topbar-actions">
-              <div className="search-wrap">
-                <Search size={17} />
-                <input
-                  aria-label="Search lessons and words"
-                  placeholder="Find something to learn…"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                />
-                <kbd>⌕</kbd>
-                {search && (
-                  <div className="search-results">
-                    <span className="eyebrow">LESSONS & WORDS</span>
-                    {[
-                      ...lessons.filter(l => (l.title + ' ' + l.subtitle).toLowerCase().includes(search.toLowerCase())).map(l => (
-                        <button key={l.id} onClick={() => { setSearch(''); navigate('learn'); openLesson(l); }}>
-                          <span>{l.icon}</span>
-                          <div><b>{l.title}</b><small>{l.subtitle}</small></div>
-                          <ArrowUpRight size={16} />
-                        </button>
-                      )),
-                      ...words.filter(w => w.word.toLowerCase().includes(search.toLowerCase())).map(w => (
-                        <button key={w.word} onClick={() => { setWordIndex(words.indexOf(w)); setSearch(''); setModal({ type: 'word', word: w }); }}>
-                          <BookOpen size={18} />
-                          <div><b>{w.word}</b><small>{w.type}</small></div>
-                          <ArrowUpRight size={16} />
-                        </button>
-                      ))
-                    ]}
-                    <p className="search-hint">
-                      {!lessons.some(l => (l.title + ' ' + l.subtitle).toLowerCase().includes(search.toLowerCase())) && !words.some(w => w.word.toLowerCase().includes(search.toLowerCase()))
-                        ? 'No matches yet. Try “food”, “grammar”, or “curious”.'
-                        : 'A new discovery is one click away.'}
-                    </p>
-                  </div>
-                )}
-              </div>
               {/* Streak Indicator with Flame */}
               <button className="streak-pill" onClick={() => setModal({ type: 'progress' })} aria-label="View learning streak">
                 <Flame size={18} /><b>{progress.streak}</b><span>day streak</span>
               </button>
-              {/* Gem / Energy Badge */}
-              <div className="gem-pill" aria-label="Energy & XP">
+              {/* XP Pill */}
+              <div className="gem-pill" aria-label="Total XP">
                 <Zap size={16} fill="currentColor" />
                 <b>{progress.xp}</b>
+              </div>
+              {/* Gems Wallet Pill */}
+              <div className="gem-currency-pill" aria-label="Gems balance">
+                <Gem size={15} />
+                <b>{progress.gems || 0}</b>
               </div>
               {/* Download Android APK Button for Web Users */}
               {!isNative && (
@@ -645,7 +983,7 @@ function App() {
                 </a>
               )}
               {/* Profile Avatar */}
-              <button className="header-profile" onClick={() => setModal({ type: user.demo ? 'auth' : 'profile' })} aria-label="Account">
+              <button className="header-profile" onClick={() => navigate('profile')} aria-label="Account">
                 <span className={`avatar small ${avatarColor}`}>{selectedAvatar}</span>
                 <ChevronDown size={15} />
               </button>
@@ -654,12 +992,18 @@ function App() {
         )}
 
         <main
-          className={`app-main ${page === 'home' ? 'home-main' : page === 'learn' ? 'learn-main' : 'interior-main'}`}
-          onTouchStart={e => touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }}
+          className={`app-main ${page === 'home' ? 'home-main' : page === 'learn' ? 'learn-main' : page === 'profile' ? 'profile-main' : 'interior-main'}`}
+          onTouchStart={e => {
+            if (page === 'practice' || e.target.closest('.practice-nav-tabs, .practice-page, .horizontal-scroll, [data-no-swipe]')) {
+              touch.current = null;
+              return;
+            }
+            touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+          }}
           onTouchEnd={e => {
-            if (!touch.current || modal) return;
+            if (!touch.current || modal || page === 'practice') return;
             const dx = e.changedTouches[0].clientX - touch.current.x, dy = e.changedTouches[0].clientY - touch.current.y;
-            if (Math.abs(dx) > 90 && Math.abs(dx) > Math.abs(dy) * 2) {
+            if (Math.abs(dx) > 110 && Math.abs(dx) > Math.abs(dy) * 2.5) {
               const i = pages.indexOf(page);
               navigate(pages[(i + (dx < 0 ? 1 : pages.length - 1)) % pages.length]);
             }
@@ -870,11 +1214,19 @@ function App() {
             )}
 
             {page === 'learn' && (
-              <Learn progress={progress} openLesson={openLesson} activeLesson={activeLesson} onOpenProgressModal={() => setModal({ type: 'progress' })} />
+              <Learn
+                progress={progress}
+                openLesson={openLesson}
+                activeLesson={activeLesson}
+                onOpenProgressModal={() => setModal({ type: 'progress' })}
+                onClaimReward={handleClaimReward}
+                claimingRewardId={claimingRewardId}
+                onNotify={notify}
+              />
             )}
 
             {page === 'practice' && (
-              <PracticeHub progress={progress} updateProgress={setProgress} api={api} />
+              <PracticeHub progress={progress} updateProgress={applyProgress} api={api} />
             )}
 
             {page === 'games' && (
@@ -888,9 +1240,245 @@ function App() {
                 <Games busy={busy} createGame={createGame} joinGame={joinGame} />
               )
             )}
+
+            {page === 'profile' && (
+              <div className="profile-page-view">
+                <div className="profile-page-header-bar">
+                  <div>
+                    <span className="profile-page-eyebrow">YOUR SPACE & ACHIEVEMENTS</span>
+                    <h1 className="profile-page-title">My Profile</h1>
+                  </div>
+                </div>
+
+                {user.demo && (
+                  <div className="profile-demo-upgrade-card">
+                    <div>
+                      <b>Save your progress</b>
+                      <p>Create a free account to sync your badges, streaks, and XP across devices.</p>
+                    </div>
+                    <button type="button" className="button primary compact" onClick={() => setModal({ type: 'auth' })}>
+                      Sign up
+                    </button>
+                  </div>
+                )}
+
+                <div className="profile-header-card">
+                  <div className="profile-avatar-wrap">
+                    <span className={`profile-avatar ${avatarColor}`}>{selectedAvatar}</span>
+                  </div>
+
+                  <div className="profile-identity-block">
+                    {isEditingName ? (
+                      <div className="profile-name-edit-box">
+                        <input
+                          type="text"
+                          value={tempName}
+                          onChange={e => setTempName(e.target.value)}
+                          placeholder="Your display name"
+                          maxLength={30}
+                          autoFocus
+                          className="profile-name-input"
+                        />
+                        <div className="profile-name-edit-btns">
+                          <button
+                            type="button"
+                            className="button dark"
+                            style={{ padding: '6px 14px', fontSize: '12px' }}
+                            onClick={() => {
+                              if (tempName.trim()) {
+                                setUser(prev => ({ ...prev, name: tempName.trim() }));
+                                localStorage.setItem('lingo-custom-name', tempName.trim());
+                                setIsEditingName(false);
+                                notify('Display name updated!');
+                              }
+                            }}
+                          >
+                            <Check size={14} /> Save
+                          </button>
+                          <button
+                            type="button"
+                            className="button light"
+                            style={{ padding: '6px 14px', fontSize: '12px' }}
+                            onClick={() => setIsEditingName(false)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="profile-name-display-row">
+                        <h2>{user.name}</h2>
+                        <button
+                          type="button"
+                          className="profile-edit-name-btn"
+                          onClick={() => {
+                            setTempName(user.name);
+                            setIsEditingName(true);
+                          }}
+                          aria-label="Edit display name"
+                        >
+                          <Edit3 size={15} />
+                        </button>
+                      </div>
+                    )}
+                    <p className="modal-description">@{user.username} · {user.demo ? 'Demo explorer' : 'English explorer'}</p>
+                  </div>
+                </div>
+
+                {/* Avatar Selection Grid */}
+                <div className="profile-custom-box">
+                  <span className="profile-box-label">CHOOSE YOUR AVATAR</span>
+                  <div className="avatar-pick-grid">
+                    {['🌱', '🐻', '🦊', '🦉', '🐧', '🐱', '🐰', '🌟'].map(av => (
+                      <button
+                        key={av}
+                        type="button"
+                        className={`avatar-pick-btn ${selectedAvatar === av ? 'active' : ''}`}
+                        onClick={() => {
+                          setSelectedAvatar(av);
+                          localStorage.setItem('lingo-avatar', av);
+                        }}
+                      >
+                        {av}
+                      </button>
+                    ))}
+                  </div>
+
+                  <span className="profile-box-label" style={{ marginTop: '12px' }}>AVATAR THEME</span>
+                  <div className="avatar-color-grid">
+                    {[
+                      ['lime', '#58cc02'],
+                      ['blue', '#1cb0f6'],
+                      ['purple', '#ce82ff'],
+                      ['yellow', '#ffc800'],
+                      ['coral', '#ff4b4b']
+                    ].map(([col, hex]) => (
+                      <button
+                        key={col}
+                        type="button"
+                        className={`avatar-color-dot ${avatarColor === col ? 'active' : ''}`}
+                        style={{ background: hex }}
+                        onClick={() => {
+                          setAvatarColor(col);
+                          localStorage.setItem('lingo-avatar-color', col);
+                        }}
+                        aria-label={`Theme ${col}`}
+                      >
+                        {avatarColor === col && <Check size={13} color="#ffffff" strokeWidth={3} />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Real Learner Progress Stats */}
+                <div className="profile-stats-grid">
+                  <div className="profile-stat-box lime">
+                    <Flame size={18} />
+                    <strong>{progress.streak}</strong>
+                    <span>day streak</span>
+                  </div>
+                  <div className="profile-stat-box purple">
+                    <Zap size={18} />
+                    <strong>{progress.xp}</strong>
+                    <span>total XP</span>
+                  </div>
+                  <div className="profile-stat-box blue">
+                    <Gem size={18} />
+                    <strong>{progress.gems || 0}</strong>
+                    <span>gems wallet</span>
+                  </div>
+                  <div className="profile-stat-box yellow">
+                    <Trophy size={18} />
+                    <strong>{progress.completed?.length || 0}</strong>
+                    <span>lessons done</span>
+                  </div>
+                </div>
+
+                {/* Learning Hub Entries: My Word Library & My Progress */}
+                <div className="profile-hub-entries">
+                  <span className="profile-box-label">YOUR LEARNING HUB</span>
+                  <div className="profile-hub-grid">
+                    <button
+                      type="button"
+                      className="profile-hub-card word-lib"
+                      onClick={() => setModal({ type: 'library' })}
+                    >
+                      <div className="profile-hub-icon"><Bookmark size={20} /></div>
+                      <div className="profile-hub-info">
+                        <strong>My Word Library</strong>
+                        <p>Vocabulary & saved flashcards</p>
+                      </div>
+                      <span className="profile-hub-badge">{progress.saved.length} {progress.saved.length === 1 ? 'word' : 'words'}</span>
+                      <ChevronRight size={18} className="profile-hub-arrow" />
+                    </button>
+
+                    <button
+                      type="button"
+                      className="profile-hub-card my-prog"
+                      onClick={() => setModal({ type: 'progress' })}
+                    >
+                      <div className="profile-hub-icon"><BarChart3 size={20} /></div>
+                      <div className="profile-hub-info">
+                        <strong>Progress & Milestones</strong>
+                        <p>Streak, XP & latest badge</p>
+                      </div>
+                      <span className="profile-hub-badge">{progress.completed?.length || 0} done</span>
+                      <ChevronRight size={18} className="profile-hub-arrow" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Full Collectible Badge Library */}
+                <AchievementsSection
+                  catalog={badgeCatalog}
+                  earnedBadges={progress.badges || {}}
+                  achievementProgress={progress.achievementProgress || {}}
+                  initialSelectedBadge={selectedBadgeDetail}
+                  onClearInitialBadge={() => setSelectedBadgeDetail(null)}
+                />
+
+                {/* Gamified Rewards, Gems & Milestone Certificates History */}
+                <RewardHistorySection
+                  progress={progress}
+                  onClaimReward={handleClaimReward}
+                  claimingId={claimingRewardId}
+                />
+
+                {/* Daily Goal Quick Setting */}
+                <div className="profile-goal-card">
+                  <div>
+                    <span className="profile-goal-title">Daily Goal</span>
+                    <strong className="profile-goal-val">{progress.goal} words / day</strong>
+                  </div>
+                  <button className="button light compact" onClick={() => setModal({ type: 'goal' })}>
+                    <Settings size={15} /> Adjust goal
+                  </button>
+                </div>
+
+                {/* Sign out */}
+                <button
+                  className="button dark full-width sign-out-action-btn"
+                  onClick={async () => {
+                    try { await api('/auth/logout', {}); } catch (e) { console.warn('Logout:', e); }
+                    token.current = null;
+                    localStorage.removeItem('lingo-token');
+                    localStorage.removeItem('lingo-game');
+                    localStorage.removeItem('lingo-solo');
+                    setModal(null);
+                    setUser(null);
+                    setProgress(null);
+                    setGame(null);
+                    navigate('home');
+                    notify('Signed out. See you again soon!');
+                  }}
+                >
+                  <LogOut size={17} /> Sign out
+                </button>
+              </div>
+            )}
           </div>
 
-          {page !== 'learn' && (
+          {page !== 'learn' && page !== 'profile' && (
             <footer className="main-footer">
               <div className="main-footer-line">
                 <span className="footer-sprout-icon">🌱</span>
@@ -909,23 +1497,27 @@ function App() {
       {/* MOBILE BOTTOM NAVIGATION DOCK (Glassmorphic Pill Dock) */}
       <nav className="mobile-nav" role="navigation" aria-label="Main Navigation">
         {[
-          [LayoutGrid, 'home', 'Home'],
+          [
+            ({ size = 19 }) => (
+              <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M11.3 2.5a1.2 1.2 0 0 1 1.4 0l8 6.2A1.5 1.5 0 0 1 21.3 9.9V19a2.5 2.5 0 0 1-2.5 2.5H15a1 1 0 0 1-1-1v-4.8a1.2 1.2 0 0 0-1.2-1.2h-1.6a1.2 1.2 0 0 0-1.2 1.2v4.8a1 1 0 0 1-1 1H5.2A2.5 2.5 0 0 1 2.7 19V9.9a1.5 1.5 0 0 1 .6-1.2l8-6.2Z" />
+              </svg>
+            ),
+            'home',
+            'Home'
+          ],
           [BookOpen, 'learn', 'Learn'],
           [Headphones, 'practice', 'Practice'],
           [Gamepad2, 'games', 'Play'],
           [User, 'profile', 'Profile']
         ].map(([Icon, key, label]) => {
-          const isProfileOpen = modal?.type === 'profile' || modal?.type === 'auth';
-          const isActive = (key === 'profile' && isProfileOpen) || (page === key && !isProfileOpen);
+          const isActive = page === key;
           return (
             <button
               key={key}
               onClick={() => {
-                if (key === 'profile') setModal({ type: user.demo ? 'auth' : 'profile' });
-                else {
-                  if (modal) setModal(null);
-                  navigate(key);
-                }
+                if (modal) setModal(null);
+                navigate(key);
               }}
               className={`mobile-nav-btn ${isActive ? 'active' : ''}`}
               aria-label={label}
@@ -951,17 +1543,34 @@ function App() {
         </div>
       )}
 
+      {badgeQueue.length > 0 && (
+        <BadgeUnlockModal
+          badge={badgeQueue[0]}
+          queueCount={badgeQueue.length}
+          onContinue={() => setBadgeQueue(prev => prev.slice(1))}
+          onViewBadge={badge => {
+            setBadgeQueue(prev => prev.slice(1));
+            setSelectedBadgeDetail(badge);
+            navigate('profile');
+          }}
+        />
+      )}
+
+      {rewardQueue.length > 0 && (
+        <RewardOpeningModal
+          entry={rewardQueue[0]}
+          queueCount={rewardQueue.length}
+          onContinue={() => setRewardQueue(prev => prev.slice(1))}
+        />
+      )}
+
       {/* MODAL DIALOGS */}
       {modal && (
-        <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget && modal.type !== 'lesson') setModal(null); }}>
-          <div className={'modal ' + (modal.type === 'lesson' ? 'lesson-modal' : '')} role="dialog" aria-modal="true" aria-label={modal.type}>
+        <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) setModal(null); }}>
+          <div className="modal" role="dialog" aria-modal="true" aria-label={modal.type}>
             <button
               className="modal-close icon-button"
-              onClick={() => {
-                if (modal.type === 'lesson') {
-                  if (window.confirm('Leave this lesson? Your answers for this attempt won’t be saved.')) setModal(null);
-                } else setModal(null);
-              }}
+              onClick={() => setModal(null)}
               aria-label="Close dialog"
             >
               <X size={20} />
@@ -969,21 +1578,6 @@ function App() {
 
             {modal.type === 'auth' && (
               <Auth api={api} adopt={adopt} close={() => setModal(null)} notify={notify} initialMode={user?.demo ? 'signup' : 'login'} isDemoActive={!!user?.demo} onExitDemo={handleExitDemo} />
-            )}
-
-            {modal.type === 'lesson' && (
-              <Lesson
-                lesson={modal.lesson}
-                api={api}
-                updateProgress={setProgress}
-                close={() => setModal(null)}
-                next={() => {
-                  const nextLesson = lessons[lessons.indexOf(modal.lesson) + 1];
-                  if (nextLesson) setModal({ type: 'lesson', lesson: nextLesson });
-                  else setModal(null);
-                }}
-                key={modal.lesson.id}
-              />
             )}
 
             {modal.type === 'goal' && (
@@ -1110,18 +1704,82 @@ function App() {
                     <div className="metric-details">
                       <strong>{progress.completed.length} / {lessons.length}</strong>
                       <span>Lessons done</span>
+                      <div className="metric-progress-track">
+                        <div
+                          className="metric-progress-fill"
+                          style={{ width: `${Math.round((progress.completed.length / lessons.length) * 100)}%` }}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
+
+                {/* Latest Achieved Badge Showcase inside Streak / Progress Modal */}
+                {(() => {
+                  const earnedList = Object.entries(progress.badges || {})
+                    .map(([id, rec]) => {
+                      const meta = badgeCatalog.find(b => b.id === id) || BADGE_CATALOG.find(b => b.id === id);
+                      return meta ? { ...meta, ...rec } : null;
+                    })
+                    .filter(Boolean)
+                    .sort((a, b) => String(b.earnedAt || '').localeCompare(String(a.earnedAt || '')));
+                  const latestBadge = earnedList[0] || null;
+                  return (
+                    <div className="streak-latest-badge-card">
+                      <div className="streak-latest-head">
+                        <span className="streak-latest-eyebrow">LATEST ACHIEVEMENT</span>
+                        <button
+                          type="button"
+                          className="streak-view-badges-link"
+                          onClick={() => {
+                            setModal(null);
+                            if (latestBadge) setSelectedBadgeDetail(latestBadge);
+                            navigate('profile');
+                          }}
+                        >
+                          {earnedList.length > 0 ? `All badges (${earnedList.length})` : 'Browse badges'} <ArrowRight size={13} />
+                        </button>
+                      </div>
+                      {latestBadge ? (
+                        <div className="streak-latest-body">
+                          <BadgeArtwork
+                            icon={latestBadge.icon}
+                            color={latestBadge.color}
+                            rarity={latestBadge.rarity}
+                            ribbonText={latestBadge.ribbonText}
+                            size={66}
+                          />
+                          <div className="streak-latest-copy">
+                            <b>{latestBadge.name}</b>
+                            <p>{latestBadge.description}</p>
+                            <small>
+                              Earned {latestBadge.earnedAt ? new Date(latestBadge.earnedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'recently'}
+                            </small>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="streak-latest-empty">
+                          <Trophy size={22} />
+                          <div>
+                            <b>No badges earned yet</b>
+                            <p>Complete your first unit to unlock “First Steps”!</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 <div className="achievements-section">
                   <h3 className="achievements-heading">Your little milestones</h3>
                   <div className="milestones-list">
                     {[
-                      ['First little win', progress.completed.length >= 1, 'Finish your first lesson'],
-                      ['Everyday explorer', progress.completed.length >= 3, 'Complete all of unit 1'],
-                      ['A world of possibilities', progress.completed.length >= lessons.length, 'Complete the entire learning path']
-                    ].map(([title, done, desc]) => (
+                      ['First little win', progress.completed.length >= 1, 'Finish your first lesson', `${Math.min(progress.completed.length, 1)}/1 lesson`],
+                      ['Everyday explorer', progress.completed.length >= 3, 'Complete all of unit 1', `${Math.min(progress.completed.length, 3)}/3 lessons`],
+                      ['Vocabulary Builder', (progress.words || 0) >= 5, 'Discover 5 English words', `${Math.min(progress.words || 0, 5)}/5 words`],
+                      ['Streak Starter', (progress.streak || 0) >= 2, 'Build a 2-day streak', `${Math.min(progress.streak || 0, 2)}/2 days`],
+                      ['A world of possibilities', progress.completed.length >= lessons.length, 'Complete the entire learning path', `${progress.completed.length}/${lessons.length} lessons`]
+                    ].map(([title, done, desc, prog]) => (
                       <div key={title} className={`milestone-item ${done ? 'unlocked' : 'locked'}`}>
                         <div className={`milestone-badge ${done ? 'earned' : 'locked'}`}>
                           {done ? <Trophy size={18} /> : <Lock size={18} />}
@@ -1130,219 +1788,28 @@ function App() {
                           <b className="milestone-title">{title}</b>
                           <p className="milestone-desc">{desc}</p>
                         </div>
-                        {done && (
+                        {done ? (
                           <div className="milestone-check" aria-label="Completed">
                             <Check size={16} />
                           </div>
+                        ) : (
+                          <span className="milestone-progress-chip">{prog}</span>
                         )}
                       </div>
                     ))}
                   </div>
-                </div>
-              </div>
-            )}
 
-            {modal.type === 'profile' && (
-              <div className="profile-modal-view">
-                <div className="profile-header-card">
-                  <div className="profile-avatar-wrap">
-                    <span className={`profile-avatar ${avatarColor}`}>{selectedAvatar}</span>
-                  </div>
-
-                  <div className="profile-identity-block">
-                    {isEditingName ? (
-                      <div className="profile-name-edit-box">
-                        <input
-                          type="text"
-                          value={tempName}
-                          onChange={e => setTempName(e.target.value)}
-                          placeholder="Your display name"
-                          maxLength={30}
-                          autoFocus
-                          className="profile-name-input"
-                        />
-                        <div className="profile-name-edit-btns">
-                          <button
-                            type="button"
-                            className="button dark"
-                            style={{ padding: '6px 14px', fontSize: '12px' }}
-                            onClick={() => {
-                              if (tempName.trim()) {
-                                setUser(prev => ({ ...prev, name: tempName.trim() }));
-                                localStorage.setItem('lingo-custom-name', tempName.trim());
-                                setIsEditingName(false);
-                                notify('Display name updated!');
-                              }
-                            }}
-                          >
-                            <Check size={14} /> Save
-                          </button>
-                          <button
-                            type="button"
-                            className="button light"
-                            style={{ padding: '6px 14px', fontSize: '12px' }}
-                            onClick={() => setIsEditingName(false)}
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="profile-name-display-row">
-                        <h2>{user.name}</h2>
-                        <button
-                          type="button"
-                          className="profile-edit-name-btn"
-                          onClick={() => {
-                            setTempName(user.name);
-                            setIsEditingName(true);
-                          }}
-                          aria-label="Edit display name"
-                        >
-                          <Edit3 size={15} />
-                        </button>
-                      </div>
-                    )}
-                    <p className="modal-description">@{user.username} · {user.demo ? 'Demo explorer' : 'English explorer'}</p>
-                  </div>
-                </div>
-
-                {/* Avatar Selection Grid */}
-                <div className="profile-custom-box">
-                  <span className="profile-box-label">CHOOSE YOUR AVATAR</span>
-                  <div className="avatar-pick-grid">
-                    {['🌱', '🐻', '🦊', '🦉', '🐧', '🐱', '🐰', '🌟'].map(av => (
-                      <button
-                        key={av}
-                        type="button"
-                        className={`avatar-pick-btn ${selectedAvatar === av ? 'active' : ''}`}
-                        onClick={() => {
-                          setSelectedAvatar(av);
-                          localStorage.setItem('lingo-avatar', av);
-                        }}
-                      >
-                        {av}
-                      </button>
-                    ))}
-                  </div>
-
-                  <span className="profile-box-label" style={{ marginTop: '12px' }}>AVATAR THEME</span>
-                  <div className="avatar-color-grid">
-                    {[
-                      ['lime', '#58cc02'],
-                      ['blue', '#1cb0f6'],
-                      ['purple', '#ce82ff'],
-                      ['yellow', '#ffc800'],
-                      ['coral', '#ff4b4b']
-                    ].map(([col, hex]) => (
-                      <button
-                        key={col}
-                        type="button"
-                        className={`avatar-color-dot ${avatarColor === col ? 'active' : ''}`}
-                        style={{ background: hex }}
-                        onClick={() => {
-                          setAvatarColor(col);
-                          localStorage.setItem('lingo-avatar-color', col);
-                        }}
-                        aria-label={`Theme ${col}`}
-                      >
-                        {avatarColor === col && <Check size={13} color="#ffffff" strokeWidth={3} />}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Real Learner Progress Stats */}
-                <div className="profile-stats-grid">
-                  <div className="profile-stat-box lime">
-                    <Flame size={18} />
-                    <strong>{progress.streak}</strong>
-                    <span>day streak</span>
-                  </div>
-                  <div className="profile-stat-box purple">
-                    <Zap size={18} />
-                    <strong>{progress.xp}</strong>
-                    <span>total XP</span>
-                  </div>
-                  <div className="profile-stat-box blue">
-                    <BookOpen size={18} />
-                    <strong>{progress.words}</strong>
-                    <span>words learned</span>
-                  </div>
-                  <div className="profile-stat-box yellow">
-                    <Trophy size={18} />
-                    <strong>{progress.completed?.length || 0}</strong>
-                    <span>lessons completed</span>
-                  </div>
-                </div>
-
-                {/* Learning Hub Entries: My Word Library & My Progress */}
-                <div className="profile-hub-entries">
-                  <span className="profile-box-label">YOUR LEARNING HUB</span>
-                  <div className="profile-hub-grid">
-                    <button
-                      type="button"
-                      className="profile-hub-card word-lib"
-                      onClick={() => setModal({ type: 'library' })}
-                    >
-                      <div className="profile-hub-icon"><Bookmark size={20} /></div>
-                      <div className="profile-hub-info">
-                        <strong>My Word Library</strong>
-                        <p>Vocabulary & saved flashcards</p>
-                      </div>
-                      <span className="profile-hub-badge">{progress.saved.length} {progress.saved.length === 1 ? 'word' : 'words'}</span>
-                      <ChevronRight size={18} className="profile-hub-arrow" />
-                    </button>
-
-                    <button
-                      type="button"
-                      className="profile-hub-card my-prog"
-                      onClick={() => setModal({ type: 'progress' })}
-                    >
-                      <div className="profile-hub-icon"><BarChart3 size={20} /></div>
-                      <div className="profile-hub-info">
-                        <strong>Progress & Milestones</strong>
-                        <p>Streak, XP & achievements</p>
-                      </div>
-                      <span className="profile-hub-badge">{progress.completed?.length || 0} done</span>
-                      <ChevronRight size={18} className="profile-hub-arrow" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Daily Goal Quick Setting */}
-                <div className="profile-goal-card">
-                  <div>
-                    <span className="profile-goal-title">Daily Goal</span>
-                    <strong className="profile-goal-val">{progress.goal} words / day</strong>
-                  </div>
-                  <button className="button light compact" onClick={() => setModal({ type: 'goal' })}>
-                    <Settings size={15} /> Adjust goal
+                  <button
+                    className="progress-modal-continue-btn"
+                    onClick={() => {
+                      setModal(null);
+                      navigate('learn');
+                    }}
+                  >
+                    <span>Keep Learning</span>
+                    <ArrowRight size={17} />
                   </button>
                 </div>
-
-                {/* Sign out */}
-                <button
-                  className="button dark full-width sign-out-action-btn"
-                  onClick={async () => {
-                    try { await api('/auth/logout', {}); } catch (e) { console.warn('Logout:', e); }
-                    token.current = null;
-                    localStorage.removeItem('lingo-token');
-                    localStorage.removeItem('lingo-game');
-                    localStorage.removeItem('lingo-solo');
-                    setModal(null);
-                    setUser(null);
-                    setProgress(null);
-                    setGame(null);
-                    notify('Signed out. See you again soon!');
-                  }}
-                >
-                  <LogOut size={17} /> Sign out
-                </button>
-
-                <p className="profile-sub-footnote">
-                  @{user.username} · {config.database === 'supabase' ? 'Synced with Supabase' : 'Local demo environment'}
-                </p>
               </div>
             )}
           </div>
@@ -1361,16 +1828,39 @@ function Auth({ api, adopt, close, notify, initialMode = 'login', isDemoActive =
   const [busy, setBusy] = useState(false);
 
   return (
-    <>
-      <div className="modal-brand"><Sprout size={32} /><span>lingo<span className="brand-dot">.</span></span></div>
-      <span className="eyebrow">YOUR ENGLISH STORY STARTS HERE</span>
-      <h2>{mode === 'signup' ? 'A little hello. A fresh start.' : 'Welcome back, explorer.'}</h2>
-      <p className="modal-description">
-        {mode === 'signup' ? 'Just a name, a username, and a password. No email. No fuss.' : 'Your next little win is waiting for you.'}
-      </p>
+    <div className="auth-modal-content">
+      <div className="auth-hero-banner">
+        <div className="auth-hero-top">
+          <div className="modal-brand">
+            <Sprout size={24} />
+            <span>lingo<span className="brand-dot">.</span></span>
+          </div>
+          <span className="auth-eyebrow">ENGLISH STORY</span>
+        </div>
+        <div className="auth-hero-row">
+          <div className="auth-hero-copy">
+            <h2>
+              {mode === 'signup' ? (
+                <>A fresh <span className="highlight-green">start.</span></>
+              ) : (
+                <>Welcome <span className="highlight-green">back!</span></>
+              )}
+            </h2>
+            <p className="modal-description">
+              {mode === 'signup'
+                ? 'Just a name, username, and password. No fuss.'
+                : 'Your next little win is waiting for you.'}
+            </p>
+          </div>
+          <div className="auth-hero-mascot">
+            <Mascot pose={mode === 'signup' ? 'walk' : 'read'} size={76} />
+          </div>
+        </div>
+      </div>
+
       <div className="auth-tabs">
-        <button className={mode === 'login' ? 'active' : ''} onClick={() => { setMode('login'); setError(''); }}>Sign in</button>
-        <button className={mode === 'signup' ? 'active' : ''} onClick={() => { setMode('signup'); setError(''); }}>Create account</button>
+        <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => { setMode('login'); setError(''); }}>Sign in</button>
+        <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => { setMode('signup'); setError(''); }}>Create account</button>
       </div>
       <form
         className="auth-form"
@@ -1408,7 +1898,7 @@ function Auth({ api, adopt, close, notify, initialMode = 'login', isDemoActive =
             autoComplete="username"
             onChange={e => setUsername(e.target.value.toLowerCase())}
           />
-          {mode === 'signup' && <small>3–20 letters, numbers, or underscores.</small>}
+          {mode === 'signup' && <small className="auth-field-hint">3–20 letters, numbers, or underscores.</small>}
         </label>
         <label>
           {mode === 'signup' ? 'Create a password' : 'Your password'}
@@ -1424,22 +1914,22 @@ function Auth({ api, adopt, close, notify, initialMode = 'login', isDemoActive =
           />
         </label>
         {error && <div className="form-error" role="alert">{error}</div>}
-        <button className="button dark full-width" disabled={busy}>
+        <button className="button primary full-width auth-submit-btn" disabled={busy}>
           {busy ? <Loader2 className="spin" size={18} /> : <>{mode === 'signup' ? 'Let’s start my story' : 'Back to my happy place'} <ArrowRight size={18} /></>}
         </button>
       </form>
       {isDemoActive && onExitDemo && (
-        <button type="button" className="text-button" style={{ marginTop: '16px', width: '100%', justifyContent: 'center' }} onClick={onExitDemo}>
+        <button type="button" className="text-button" style={{ marginTop: '14px', width: '100%', justifyContent: 'center' }} onClick={onExitDemo}>
           Leave demo mode and return to sign in
         </button>
       )}
-      <p className="auth-note"><Lock size={13} /> Your password is securely hashed.</p>
-    </>
+      <p className="auth-note"><ShieldCheck size={14} /> Your password is securely hashed.</p>
+    </div>
   );
 }
 
-// SCREEN 4: EXERCISE & LESSON EXPERIENCES (Matches Screenshot 4)
-function Lesson({ lesson, api, updateProgress, close, next }) {
+// SCREEN 4: EXERCISE & LESSON EXPERIENCES (Full-Page Mode)
+function Lesson({ lesson, api, updateProgress, onCompleteCheckpoint, savedWords = [], onSaveWord, close, next }) {
   const [curriculum, setCurriculum] = useState(null);
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState('');
@@ -1449,10 +1939,15 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
   const [checked, setChecked] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [answers, setAnswers] = useState([]);
+  const [checkedResults, setCheckedResults] = useState([]);
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [lifecycle, setLifecycle] = useState('loading');
+  const [attemptSeq, setAttemptSeq] = useState(0);
+  const practiceStartRef = useRef(Date.now());
+  const exerciseStartRef = useRef(Date.now());
+  const exerciseTimesRef = useRef([]);
 
   function speakPrompt(text) {
     if (!('speechSynthesis' in window)) return;
@@ -1474,7 +1969,70 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
     setChecked(false);
     setFeedback(null);
     setAnswers([]);
+    setCheckedResults([]);
     setResult(null);
+    practiceStartRef.current = Date.now();
+    exerciseStartRef.current = Date.now();
+    exerciseTimesRef.current = [];
+
+    if (lesson.isCheckpoint) {
+      const info = getCheckpointUnitLessons(lesson.id);
+      const unitIds = info?.precedingRealIds?.length ? info.precedingRealIds : ['hello', 'everyday', 'sentences'];
+      Promise.all(unitIds.map(id => api('/curriculum/lessons/' + encodeURIComponent(id)).catch(() => null)))
+        .then(loaded => {
+          if (!active) return;
+          const valid = loaded.filter(d => d && Array.isArray(d.exercises) && d.exercises.length);
+          if (!valid.length) {
+            setApiError('Milestone review exercises could not be loaded.');
+            setLifecycle('error');
+            setLoading(false);
+            return;
+          }
+          const combinedExercises = [];
+          let pass = 0;
+          while (combinedExercises.length < 5 && pass < 5) {
+            for (const src of valid) {
+              if (combinedExercises.length >= 5) break;
+              const ex = src.exercises[pass];
+              if (ex) {
+                combinedExercises.push({
+                  ...ex,
+                  sourceLessonId: src.id,
+                  sourceExerciseIndex: pass
+                });
+              }
+            }
+            pass++;
+          }
+          const combinedVocab = valid.flatMap(d => d.vocabulary || []).slice(0, 6);
+          setCurriculum({
+            id: lesson.id,
+            isCheckpoint: true,
+            title: lesson.title,
+            subtitle: lesson.subtitle,
+            levelCode: `${info?.level?.code || 'CEFR'} MILESTONE`,
+            pedagogicalFocus: 'Unit Milestone Review',
+            icon: lesson.icon || '🏆',
+            accentColor: lesson.color || 'lime',
+            xp: lesson.xp || 40,
+            description: lesson.description || 'Review everything you learned in this unit to unlock the next stage.',
+            explanation: 'This milestone assessment brings together key vocabulary, grammar, and listening skills from this unit. Score at least 60% to earn your milestone badge and XP!',
+            vocabulary: combinedVocab,
+            learningObjectives: valid.map(v => v.primaryObjective).filter(Boolean),
+            review: valid[valid.length - 1]?.review || 'Great job synthesizing this unit! You are ready for the next unit.',
+            exercises: combinedExercises
+          });
+          setLifecycle('ready');
+          setLoading(false);
+        })
+        .catch(err => {
+          if (!active) return;
+          setApiError(err.message || 'Failed to load milestone assessment.');
+          setLifecycle('error');
+          setLoading(false);
+        });
+      return () => { active = false; };
+    }
 
     const targetId = lesson.realLessonId || lesson.id;
     if (!targetId) {
@@ -1504,7 +2062,18 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
       });
 
     return () => { active = false; };
-  }, [lesson.id, lesson.realLessonId]);
+  }, [lesson.id, lesson.realLessonId, lesson.isCheckpoint]);
+
+  const exercises = curriculum?.exercises || [];
+  const currentEx = exercises[index] || (lesson?.questions ? { prompt: lesson.questions[index]?.[0], options: lesson.questions[index]?.[1], explanation: lesson.questions[index]?.[3] } : null);
+  const currentShuffle = useMemo(() => {
+    if (!currentEx?.options?.length) return null;
+    const scopeId = curriculum?.id || lesson?.id || 'lesson';
+    return getOrCreateStableShuffle(
+      `lingo-shuf:lesson:${scopeId}:${attemptSeq}:q${index}:${currentEx.id || index}`,
+      currentEx.options
+    );
+  }, [curriculum?.id, lesson?.id, attemptSeq, index, currentEx?.id, currentEx?.options]);
 
   if (loading || lifecycle === 'loading') {
     return <div className="lesson-loading-state"><Loader2 className="spin" size={32} /><p>Loading lesson curriculum & exercises…</p></div>;
@@ -1516,13 +2085,10 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
         <div className="celebration"><span>✦</span><Leaf size={48} /><span>✧</span></div>
         <h2>We hit a little bump.</h2>
         <p>{apiError || 'Could not load lesson content.'}</p>
-        <button className="button dark full-width" onClick={close}>Back to my journey</button>
+        <button className="button primary full-width" onClick={close}>Back to my journey</button>
       </div>
     );
   }
-
-  const exercises = curriculum.exercises || [];
-  const currentEx = exercises[index] || (lesson.questions ? { prompt: lesson.questions[index]?.[0], options: lesson.questions[index]?.[1], explanation: lesson.questions[index]?.[3] } : null);
 
   async function checkAnswer() {
     if (selected === null || busy || lifecycle === 'submitting') return;
@@ -1530,13 +2096,26 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
     setLifecycle('submitting');
     setError('');
     try {
+      const checkLessonId = currentEx?.sourceLessonId || curriculum.id;
+      const checkIndex = currentEx?.sourceExerciseIndex ?? index;
+      const canonicalChoice = toOriginalIndex(currentShuffle, selected);
       const res = await api('/curriculum/exercises/check', {
-        lessonId: curriculum.id,
-        exerciseIndex: index,
-        choice: selected,
+        lessonId: checkLessonId,
+        exerciseIndex: checkIndex,
+        choice: canonicalChoice,
         exerciseId: currentEx?.id
       });
+      if (Number.isInteger(res?.correctIndex)) {
+        recordCorrectPositionMetric(toDisplayIndex(currentShuffle, res.correctIndex));
+      }
       setFeedback(res);
+      const elapsedEx = Math.max(1, Math.round((Date.now() - exerciseStartRef.current) / 1000));
+      exerciseTimesRef.current[index] = elapsedEx;
+      setCheckedResults(prev => {
+        const nextArr = [...prev];
+        nextArr[index] = !!res?.isCorrect;
+        return nextArr;
+      });
       setChecked(true);
       setLifecycle('in_progress');
     } catch (err) {
@@ -1549,17 +2128,32 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
 
   async function advance() {
     if (busy || lifecycle === 'submitting') return;
-    const a = [...answers, selected];
+    const canonicalChoice = toOriginalIndex(currentShuffle, selected);
+    const a = [...answers, canonicalChoice];
     if (index === exercises.length - 1) {
       setBusy(true);
       setLifecycle('submitting');
       setError('');
       try {
-        const r = await api('/progress/lesson', { lesson: curriculum.id, answers: a });
-        updateProgress(r.progress);
-        setResult(r);
-        setStage('results');
-        setLifecycle('completed');
+        if (curriculum.isCheckpoint && onCompleteCheckpoint) {
+          const correctCount = checkedResults.filter(Boolean).length;
+          const r = await onCompleteCheckpoint(curriculum.id, curriculum.xp || 40, exercises.length, correctCount);
+          setResult(r);
+          setStage('results');
+          setLifecycle('completed');
+        } else {
+          const durationSec = Math.max(1, Math.round((Date.now() - practiceStartRef.current) / 1000));
+          const r = await api('/progress/lesson', {
+            lesson: curriculum.id,
+            answers: a,
+            durationSec,
+            exerciseTimesSec: exerciseTimesRef.current
+          });
+          updateProgress(r.progress);
+          setResult(r);
+          setStage('results');
+          setLifecycle('completed');
+        }
       } catch (e) {
         setError(e.message || 'Failed to record lesson completion. Please retry.');
         setLifecycle('in_progress');
@@ -1572,16 +2166,21 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
       setSelected(null);
       setChecked(false);
       setFeedback(null);
+      exerciseStartRef.current = Date.now();
       setLifecycle('in_progress');
     }
   }
 
   function reset() {
+    const scopeId = curriculum?.id || lesson?.id || 'lesson';
+    clearStableShufflesByPrefix(`lingo-shuf:lesson:${scopeId}:`);
+    setAttemptSeq(prev => prev + 1);
     setIndex(0);
     setSelected(null);
     setChecked(false);
     setFeedback(null);
     setAnswers([]);
+    setCheckedResults([]);
     setResult(null);
     setError('');
     setStage('practice');
@@ -1602,8 +2201,14 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
         <p>{result.passed ? 'Another little step toward a more confident you.' : 'Every mistake is a chance to learn. Score 3 out of 5 to unlock the next level.'}</p>
 
         <div className="lesson-result-stats">
-          <div><strong>{result.correct} / {result.total}</strong><span>correct answers</span></div>
-          <div><strong>+{result.earned}</strong><span>{result.alreadyCompleted ? 'XP earned (already mastered)' : 'XP earned'}</span></div>
+          <div className="lesson-stat-pill">
+            <strong>{result.correct} / {result.total}</strong>
+            <span>correct answers</span>
+          </div>
+          <div className="lesson-stat-pill xp">
+            <strong>+{result.earned} XP</strong>
+            <span>{result.alreadyCompleted ? 'already mastered' : 'earned'}</span>
+          </div>
         </div>
 
         {(curriculum.learningObjectives?.length > 0 || primaryObj) && (
@@ -1627,17 +2232,17 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
         )}
 
         {result.passed ? (
-          <>
-            <button className="button dark full-width" onClick={next}>
+          <div className="lesson-result-actions">
+            <button className="button primary full-width" onClick={next}>
               {isPathFinished ? 'You finished this path!' : 'On to the next little adventure'} <ArrowRight size={18} />
             </button>
             <button className="button light full-width" onClick={close}>Back to my journey</button>
-          </>
+          </div>
         ) : (
-          <>
-            <button className="button dark full-width" onClick={reset}><RotateCcw size={18} /> Try again. You’ve got this.</button>
+          <div className="lesson-result-actions">
+            <button className="button primary full-width" onClick={reset}><RotateCcw size={18} /> Try again. You’ve got this.</button>
             <button className="button light full-width" onClick={() => setStage('learn')}>Review lesson notes</button>
-          </>
+          </div>
         )}
       </div>
     );
@@ -1646,7 +2251,7 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
   if (stage === 'learn') {
     return (
       <>
-        <div className="lesson-header" style={{ paddingRight: '48px' }}>
+        <div className="lesson-header">
           <span className={'lesson-mini-icon ' + (curriculum.accentColor || lesson.color || 'lime')}>{curriculum.icon || lesson.icon || '📖'}</span>
           <div>
             <span className="eyebrow">
@@ -1659,7 +2264,17 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
         <div className="lesson-stage-stepper" role="tablist">
           <span className="stepper-step active"><span className="step-num">1</span><span>Learn</span></span>
           <span className="stepper-arrow">›</span>
-          <button type="button" className="stepper-step" onClick={() => setStage('practice')}><span className="step-num">2</span><span>Practice</span></button>
+          <button
+            type="button"
+            className="stepper-step"
+            onClick={() => {
+              practiceStartRef.current = Date.now();
+              exerciseStartRef.current = Date.now();
+              setStage('practice');
+            }}
+          >
+            <span className="step-num">2</span><span>Practice</span>
+          </button>
           <span className="stepper-arrow">›</span>
           <span className="stepper-step"><span className="step-num">3</span><span>Results</span></span>
         </div>
@@ -1692,13 +2307,29 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
             <div className="learn-section-block">
               <div className="learn-section-heading"><BookOpen size={15} /><span>Core Vocabulary ({curriculum.vocabulary.length} words)</span></div>
               <div className="learn-vocab-grid">
-                {curriculum.vocabulary.map((v, i) => (
-                  <div key={i} className="learn-vocab-card">
-                    <div className="vocab-term-row"><span className="vocab-term">{v.term}</span></div>
-                    <div className="vocab-definition">{v.definition}</div>
-                    {v.example && <div className="vocab-example">“{v.example}”</div>}
-                  </div>
-                ))}
+                {curriculum.vocabulary.map((v, i) => {
+                  const isSaved = savedWords.includes(v.term);
+                  return (
+                    <div key={i} className="learn-vocab-card">
+                      <div className="vocab-term-row">
+                        <span className="vocab-term">{v.term}</span>
+                        {onSaveWord && (
+                          <button
+                            type="button"
+                            className={`vocab-save-mini-btn ${isSaved ? 'saved' : ''}`}
+                            onClick={() => onSaveWord(v.term)}
+                            aria-label={isSaved ? `Saved ${v.term}` : `Save ${v.term}`}
+                          >
+                            <Bookmark size={13} fill={isSaved ? 'currentColor' : 'none'} />
+                            <span>{isSaved ? 'Saved' : 'Save'}</span>
+                          </button>
+                        )}
+                      </div>
+                      <div className="vocab-definition">{v.definition}</div>
+                      {v.example && <div className="vocab-example">“{v.example}”</div>}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1728,7 +2359,14 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
           )}
         </div>
 
-        <button className="button dark full-width start-practice-action-btn" onClick={() => setStage('practice')}>
+        <button
+          className="button primary full-width start-practice-action-btn"
+          onClick={() => {
+            practiceStartRef.current = Date.now();
+            exerciseStartRef.current = Date.now();
+            setStage('practice');
+          }}
+        >
           Start Practice ({exercises.length} questions) <ArrowRight size={18} />
         </button>
       </>
@@ -1750,7 +2388,7 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
   return (
     <>
       {/* SCREEN 4: TOPBAR WITH PROGRESS AND HEARTS */}
-      <div className="lesson-top-bar" style={{ paddingRight: '48px' }}>
+      <div className="lesson-top-bar">
         <div className="lesson-progress-segmented">
           <i style={{ width: `${(index / exercises.length) * 100}%` }} />
         </div>
@@ -1764,35 +2402,39 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
         <span className="exercise-category-eyebrow">
           <Headphones size={14} /> {currentEx?.exerciseType === 'listening' ? 'LISTEN & CHOOSE' : 'CHOOSE THE CORRECT ANSWER'}
         </span>
-        <h2 className="exercise-prompt-title">{currentEx?.prompt || 'Listen to the audio and choose the right option'}</h2>
-        <p className="exercise-prompt-sub">Listen to the audio or read along, then select the best answer below.</p>
       </div>
 
       {/* Audio & Mascot Prompt Area */}
       <div className="exercise-audio-card">
-        <div className="exercise-mascot-peek">
-          <Mascot pose="listen" size={68} />
+        <div className="exercise-audio-top-row">
+          <div className="exercise-mascot-peek">
+            <Mascot pose="listen" size={62} />
+          </div>
+          <button
+            type="button"
+            className="exercise-speaker-btn"
+            onClick={() => speakPrompt(currentEx?.prompt || 'listen')}
+            aria-label="Hear pronunciation audio"
+          >
+            <Volume2 size={24} />
+          </button>
         </div>
-        <button
-          type="button"
-          className="exercise-speaker-btn"
-          onClick={() => speakPrompt(currentEx?.prompt || 'listen')}
-          aria-label="Hear pronunciation audio"
-        >
-          <Volume2 size={26} />
-        </button>
         <div className="exercise-audio-prompt-box">
-          <div className="exercise-prompt-quote">“{currentEx?.prompt || 'Listen closely to the audio.'}”</div>
-          <span className="exercise-audio-hint">Tap speaker to replay audio</span>
+          <div className="exercise-prompt-quote">{currentEx?.prompt || 'Listen closely to the audio.'}</div>
+          <span className="exercise-audio-hint">Tap speaker to hear audio</span>
         </div>
       </div>
 
       {/* 2x2 Choice Grid or Options */}
-      {currentEx && (
+      {currentEx && currentShuffle && (
         <div className={hasVisualChoices ? 'choice-grid-2x2' : 'answer-options'}>
-          {currentEx.options.map((opt, i) => {
+          {currentShuffle.options.map((optObj, i) => {
+            const opt = optObj.text;
             const isSelected = selected === i;
-            const isCorrectOption = checked && feedback?.correctIndex === i;
+            const correctDisplayIndex = feedback?.correctIndex !== undefined
+              ? toDisplayIndex(currentShuffle, feedback.correctIndex)
+              : -1;
+            const isCorrectOption = checked && correctDisplayIndex === i;
             const isWrongSelection = checked && isSelected && !feedback?.isCorrect;
             const btnClass = checked
               ? (isCorrectOption ? 'correct' : isWrongSelection ? 'incorrect' : '')
@@ -1803,7 +2445,7 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
             if (hasVisualChoices) {
               return (
                 <button
-                  key={i}
+                  key={optObj.id}
                   type="button"
                   disabled={checked || busy || lifecycle === 'submitting'}
                   className={`choice-card-item ${btnClass}`}
@@ -1819,7 +2461,7 @@ function Lesson({ lesson, api, updateProgress, close, next }) {
 
             return (
               <button
-                key={i}
+                key={optObj.id}
                 type="button"
                 disabled={checked || busy || lifecycle === 'submitting'}
                 className={btnClass}
