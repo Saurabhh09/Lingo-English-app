@@ -13,5 +13,15 @@ export default defineConfig({
         secure: false,
       }
     }
+  },
+  preview: {
+    host: '0.0.0.0',
+    proxy: {
+      '/api': {
+        target: 'https://lingo-ruby-three.vercel.app',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
   }
 });

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Headphones, Mic, Volume2, Bot, Sparkles, Trophy, Zap, Flame, Loader2 } from 'lucide-react';
+import { Mascot } from '../../Art.jsx';
 import { ListeningLab } from './ListeningLab.jsx';
 import { SpeakingStudio } from './SpeakingStudio.jsx';
 import { PronunciationCoach } from './PronunciationCoach.jsx';
@@ -60,27 +61,40 @@ export function PracticeHub({ progress, updateProgress, api }) {
     <div className="practice-page">
       {/* 1. Header Banner */}
       <section className="practice-banner">
-        <div>
-          <span className="pill white">
-            <Sparkles size={14} /> PHASE 11 · MULTIMODAL ENGLISH PRACTICE
-          </span>
-          <h2>Listen, Speak & Converse.<br />Language practice that feels alive.</h2>
+        <div className="practice-banner-text">
+          <div className="practice-eyebrow">
+            <Sparkles size={14} className="eyebrow-sparkle" />
+            <span>PRACTICE STUDIO</span>
+          </div>
+          <h2>Listen, Speak & Converse</h2>
           <p>
-            Train your ears with natural audio passages, hone your voice with speech recognition,
-            test pronunciation clarity, and practice realistic conversations.
+            Train your ears with natural dialogues, hone your pronunciation with speech feedback,
+            and practice realistic AI conversations.
           </p>
           <div className="practice-stats-pills">
-            <span><Headphones size={15} /> 9 Listening Passages</span>
-            <span><Mic size={15} /> 4 Speaking Challenges</span>
-            <span><Volume2 size={15} /> 6 Pronunciation Targets</span>
-            <span><Bot size={15} /> 5 Conversation Scenarios</span>
-            <span><Trophy size={15} /> {totalCompletedPractice} Mastered</span>
+            <span><Headphones size={15} /> {catalog.listening.length} Listening</span>
+            <span><Mic size={15} /> {catalog.speaking.length} Speaking</span>
+            <span><Volume2 size={15} /> {catalog.pronunciation.length} Pronunciation</span>
+            <span><Bot size={15} /> {catalog.scenarios.length} AI Scenarios</span>
+            <span className="pill-mastered"><Trophy size={15} /> {totalCompletedPractice} Mastered</span>
           </div>
+        </div>
+
+        <div className="practice-banner-mascot">
+          <Mascot pose="study" size={96} />
         </div>
       </section>
 
       {/* 2. Interactive Navigation Tabs */}
-      <nav className="practice-nav-tabs" role="tablist" aria-label="Practice capabilities">
+      <nav
+        className="practice-nav-tabs"
+        role="tablist"
+        aria-label="Practice capabilities"
+        data-no-swipe="true"
+        onTouchStart={e => e.stopPropagation()}
+        onTouchMove={e => e.stopPropagation()}
+        onTouchEnd={e => e.stopPropagation()}
+      >
         <button
           role="tab"
           aria-selected={activeTab === 'listening'}
@@ -110,7 +124,7 @@ export function PracticeHub({ progress, updateProgress, api }) {
           onClick={() => setActiveTab('pronunciation')}
         >
           <Volume2 size={17} />
-          <span>Pronunciation Coach</span>
+          <span>Pronunciation</span>
           <span className="practice-tab-badge">{catalog.pronunciation.length}</span>
         </button>
 
@@ -121,7 +135,7 @@ export function PracticeHub({ progress, updateProgress, api }) {
           onClick={() => setActiveTab('ai')}
         >
           <Bot size={17} />
-          <span>AI Conversation Tutor</span>
+          <span>AI Tutor</span>
           <span className="practice-tab-badge">{catalog.scenarios.length}</span>
         </button>
       </nav>

@@ -128,8 +128,12 @@ export function GamesSetup({ busy, createGame, joinGame }) {
   return (
     <div className="games-page">
       {/* Hero Banner */}
-      <section className="game-banner purple">
-        <div>
+      <section className="game-banner lingo-green">
+        <div className="game-banner-text">
+          <div className="game-eyebrow">
+            <Sparkles size={14} className="eyebrow-sparkle" />
+            <span>GAME ARENA</span>
+          </div>
           <h2>
             A little challenge.<br />A whole lot of fun.
           </h2>
@@ -662,13 +666,6 @@ export function GamesSetup({ busy, createGame, joinGame }) {
                       );
                     })}
                   </div>
-
-                  <div className="host-role-note">
-                    <Tv size={14} />
-                    <span>
-                      Spectator role UI preference is saved for room creation; full spectator permission enforcement activates in Phase 3.
-                    </span>
-                  </div>
                 </div>
               )}
 
@@ -737,59 +734,6 @@ export function GamesSetup({ busy, createGame, joinGame }) {
           </section>
 
         </div>
-
-        {/* ====================================================
-            SIDEBAR GUIDE (Onboarding field guide)
-           ==================================================== */}
-        <aside className="game-sidebar">
-          <section className="howto-card yellow" aria-labelledby="howto-heading">
-            <span className="howto-icon" aria-hidden="true">✦</span>
-            <span className="eyebrow">A QUICK FIELD GUIDE</span>
-            <h2 id="howto-heading">Good times,<br />in three steps.</h2>
-
-            {[
-              [
-                '1',
-                'Choose your mode',
-                'Play independently in Solo mode, or launch a Friends lobby and share your unique 6-character room code.',
-              ],
-              [
-                '2',
-                'Tailor your challenge',
-                'Select international CEFR levels (Pre-A1 to C2), choose rich curated topics or craft custom topics, and dial in time and questions.',
-              ],
-              [
-                '3',
-                'Compete or spectate',
-                'In Friends mode, hosts can join the trivia race as an active player or spectate the live scoreboard from above.',
-              ],
-            ].map(([n, title, text]) => (
-              <div className="howto-step" key={n}>
-                <span>{n}</span>
-                <div>
-                  <h3>{title}</h3>
-                  <p>{text}</p>
-                </div>
-              </div>
-            ))}
-
-            <div className="howto-note">
-              <Sparkles size={18} />
-              <span>
-                <b>Phase 2 Onboarding</b>
-                <br />
-                Clean responsive controls, standard CEFR mapping, and full validation are active.
-              </span>
-            </div>
-          </section>
-
-          <div className="game-tip">
-            <span>💡</span>
-            <p>
-              <b>A little tip</b>Every answer teaches you something—even the ones you don’t get right.
-            </p>
-          </div>
-        </aside>
       </div>
     </div>
   );

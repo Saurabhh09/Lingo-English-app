@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { AudioPlayer } from './AudioPlayer.jsx';
 import { Headphones, Check, CheckCircle2, XCircle, ArrowRight, RotateCcw, Sparkles, Loader2 } from 'lucide-react';
+import { getOrCreateStableShuffle, clearStableShufflesByPrefix, toOriginalIndex, toDisplayIndex, recordCorrectPositionMetric } from '../../../server/optionShuffler.mjs';
 
 export function ListeningLab({ modules = [], api, updateProgress, userCompleted = [] }) {
   const [selectedId, setSelectedId] = useState(modules[0]?.id || 'list_pre_a1_01');
@@ -8,8 +9,19 @@ export function ListeningLab({ modules = [], api, updateProgress, userCompleted 
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [attemptSeq, setAttemptSeq] = useState(0);
 
   const currentModule = modules.find(m => m.id === selectedId) || modules[0];
+
+  const questionShuffles = useMemo(() => {
+    if (!currentModule?.questions?.length) return [];
+    return currentModule.questions.map((q, qIdx) =>
+      getOrCreateStableShuffle(
+        `lingo-shuf:listening:${currentModule.id}:${attemptSeq}:q${qIdx}`,
+        q.options || []
+      )
+    );
+  }, [currentModule?.id, attemptSeq, currentModule?.questions]);
 
   function handleSelectOption(qIndex, optionIndex) {
     if (result) return;
@@ -37,13 +49,20 @@ export function ListeningLab({ modules = [], api, updateProgress, userCompleted 
     setBusy(true);
     setError('');
 
-    const answerArray = currentModule.questions.map((_, idx) => answers[idx]);
+    const answerArray = currentModule.questions.map((_, idx) =>
+      toOriginalIndex(questionShuffles[idx], answers[idx])
+    );
 
     try {
       const res = await api('/practice/listening/submit', {
         moduleId: currentModule.id,
         answers: answerArray
       });
+      if (Array.isArray(res?.solutions)) {
+        res.solutions.forEach((solOrigIdx, qIdx) => {
+          recordCorrectPositionMetric(toDisplayIndex(questionShuffles[qIdx], solOrigIdx));
+        });
+      }
       setResult(res);
       if (res.progress) {
         updateProgress(res.progress);
@@ -56,6 +75,10 @@ export function ListeningLab({ modules = [], api, updateProgress, userCompleted 
   }
 
   function handleRetry() {
+    if (currentModule?.id) {
+      clearStableShufflesByPrefix(`lingo-shuf:listening:${currentModule.id}:`);
+    }
+    setAttemptSeq(prev => prev + 1);
     setAnswers({});
     setResult(null);
     setError('');
@@ -114,13 +137,16 @@ export function ListeningLab({ modules = [], api, updateProgress, userCompleted 
           {currentModule.questions.map((q, qIndex) => {
             const selectedOpt = answers[qIndex];
             const isEvaluated = !!result;
-            const correctOpt = result?.solutions?.[qIndex];
+            const qShuffle = questionShuffles[qIndex];
+            const rawCorrectOpt = result?.solutions?.[qIndex];
+            const correctOpt = rawCorrectOpt !== undefined ? toDisplayIndex(qShuffle, rawCorrectOpt) : undefined;
+            const optsToRender = qShuffle?.options || (q.options || []).map((text, idx) => ({ id: `opt_${idx}`, text }));
 
             return (
               <div key={qIndex} className="listening-question-card">
                 <h5>{qIndex + 1}. {q.prompt}</h5>
                 <div className="listening-options-grid">
-                  {q.options.map((opt, optIndex) => {
+                  {optsToRender.map((optObj, optIndex) => {
                     const isChosen = selectedOpt === optIndex;
                     let optClass = isChosen ? 'selected' : '';
                     if (isEvaluated) {
@@ -133,7 +159,7 @@ export function ListeningLab({ modules = [], api, updateProgress, userCompleted 
 
                     return (
                       <button
-                        key={optIndex}
+                        key={optObj.id}
                         type="button"
                         className={`listening-option-btn ${optClass}`}
                         disabled={isEvaluated || busy}
@@ -142,7 +168,7 @@ export function ListeningLab({ modules = [], api, updateProgress, userCompleted 
                         <span className="listening-option-key">
                           {String.fromCharCode(65 + optIndex)}
                         </span>
-                        <span>{opt}</span>
+                        <span>{optObj.text}</span>
                         {isEvaluated && optIndex === correctOpt && <Check size={16} style={{ marginLeft: 'auto' }} />}
                       </button>
                     );

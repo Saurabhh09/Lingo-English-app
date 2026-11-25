@@ -13,6 +13,10 @@ import { getPublicPracticeCatalog, getListeningSolutionKeys, LISTENING_MODULES, 
 import { evaluatePronunciation } from './server/pronunciationEvaluator.mjs';
 import { generateQuestionSet, generateCuratedFallbackQuestions, validateQuestionConfig, setQuestionGeneratorMock, clearQuestionGeneratorMock, hasQuestionGeneratorMock } from './server/questionGenerator.mjs';
 import { getAIStatus, sendAIConversationTurn, generateGuidedFallbackResponse, setAIProviderMock, clearAIProviderMock, hasAIProviderMock } from './server/aiProvider.mjs';
+import { BADGE_CATALOG, BADGE_CATEGORIES } from './server/badgeCatalog.mjs';
+import { evaluateAchievements, formatAchievementSummary, isValidVocabTerm, ensureAchievementState } from './server/achievementEngine.mjs';
+import { REWARD_DEFINITIONS } from './server/rewardDefinitions.mjs';
+import { evaluateRewards, claimReward, formatRewardHistory, ensureRewardState } from './server/rewardEngine.mjs';
 
 const PRESET_TOPIC_NAMES = new Set([
   'Mixed English',
@@ -67,6 +71,97 @@ let local = fs.existsSync(dataPath) ? JSON.parse(fs.readFileSync(dataPath, 'utf8
 if (!local.solo) local.solo = {};
 const db = { async get(table, id) { if (!supabase) return structuredClone(local[table]?.[id] || null); const { data, error } = await supabase.from('lingo_' + table).select('payload').eq('id', id).maybeSingle(); if (error) throw Error('Database is not ready. Apply supabase/schema.sql.'); return data?.payload || null; }, async set(table, id, payload) { if (supabase) { const { error } = await supabase.from('lingo_' + table).upsert({ id, payload }); if (error) throw Error('Database write failed. Check your Supabase setup.'); } else { if (!local[table]) local[table] = {}; local[table][id] = structuredClone(payload); try { fs.writeFileSync(dataPath + '.tmp', JSON.stringify(local)); fs.renameSync(dataPath + '.tmp', dataPath); } catch { fs.writeFileSync(dataPath, JSON.stringify(local)); } } }, async del(table, id) { if (supabase) { const { error } = await supabase.from('lingo_' + table).delete().eq('id', id); if (error) throw error; } else { if (local[table]) delete local[table][id]; fs.writeFileSync(dataPath, JSON.stringify(local)); } } };
 const id = () => randomBytes(16).toString('hex'); const hash = s => createHash('sha256').update(s).digest('hex'); const today = () => new Date().toISOString().slice(0, 10);
+
+let badgesCatalogSeeded = false;
+async function syncRelationalAchievements(username, earnedBadges = {}, achievementProgress = {}) {
+  if (!supabase) return;
+  try {
+    if (!badgesCatalogSeeded) {
+      const rows = BADGE_CATALOG.map(b => ({
+        id: b.id,
+        name: b.name,
+        description: b.description,
+        category: b.category,
+        icon: b.icon,
+        rarity: b.rarity,
+        unlock_condition: b.unlockCondition
+      }));
+      const { error: seedErr } = await supabase.from('badges').upsert(rows, { onConflict: 'id' });
+      if (!seedErr) badgesCatalogSeeded = true;
+    }
+    const badgeRows = Object.values(earnedBadges).map(b => ({
+      id: `${username}:${b.badgeId}`,
+      user_id: username,
+      badge_id: b.badgeId,
+      earned_at: b.earnedAt || new Date().toISOString(),
+      related_entity_type: b.relatedEntityType || null,
+      related_entity_id: b.relatedEntityId || null
+    }));
+    if (badgeRows.length) {
+      await supabase.from('user_badges').upsert(badgeRows, { onConflict: 'user_id,badge_id' });
+    }
+    const progRows = Object.values(achievementProgress).map(ap => ({
+      id: `${username}:${ap.achievementId}`,
+      user_id: username,
+      achievement_id: ap.achievementId,
+      current_progress: ap.currentProgress || 0,
+      target_progress: Math.max(1, ap.targetProgress || 1),
+      updated_at: ap.updatedAt || new Date().toISOString()
+    }));
+    if (progRows.length) {
+      await supabase.from('achievement_progress').upsert(progRows, { onConflict: 'user_id,achievement_id' });
+    }
+  } catch {
+    // Graceful fallback: lingo_progress JSONB remains authoritative even if relational migration hasn't run yet.
+  }
+}
+let rewardDefsSeeded = false;
+async function syncRelationalRewards(username, progress = {}) {
+  if (!supabase) return;
+  try {
+    if (!rewardDefsSeeded) {
+      const defRows = REWARD_DEFINITIONS.map(r => ({
+        id: r.id,
+        name: r.name,
+        description: r.description,
+        trigger_type: r.triggerType,
+        trigger_reference: r.triggerReference,
+        xp_amount: r.xpAmount || 0,
+        gems_amount: r.gemsAmount || 0,
+        badge_id: r.badgeId || null,
+        certificate_title: r.certificateTitle || null,
+        is_active: r.isActive !== false
+      }));
+      const { error: seedErr } = await supabase.from('reward_definitions').upsert(defRows, { onConflict: 'id' });
+      if (!seedErr) rewardDefsSeeded = true;
+    }
+    const rewardRows = Object.values(progress.rewards || {}).map(rw => ({
+      id: `${username}:${rw.rewardId}`,
+      user_id: username,
+      reward_id: rw.rewardId,
+      status: rw.status,
+      unlocked_at: rw.unlockedAt || null,
+      claimed_at: rw.claimedAt || null
+    }));
+    if (rewardRows.length) {
+      await supabase.from('user_rewards').upsert(rewardRows, { onConflict: 'user_id,reward_id' });
+    }
+    const txRows = (progress.walletLedger || []).map(tx => ({
+      id: `${username}:${tx.id}`,
+      user_id: username,
+      currency: tx.currency,
+      amount: tx.amount,
+      source_type: tx.sourceType,
+      source_id: tx.sourceId,
+      created_at: tx.createdAt || new Date().toISOString()
+    }));
+    if (txRows.length) {
+      await supabase.from('wallet_transactions').upsert(txRows, { onConflict: 'user_id,currency,source_type,source_id' });
+    }
+  } catch {
+    // Graceful fallback: lingo_progress JSONB remains authoritative if relational reward tables aren't applied yet.
+  }
+}
 const locks = new Map(); async function locked(key, fn) { const prior = locks.get(key) || Promise.resolve(); let release; const next = new Promise(r => release = r); locks.set(key, next); await prior; try { return await fn(); } finally { release(); if (locks.get(key) === next) locks.delete(key); } }
 const fail = (msg, status = 400) => { const e = Error(msg); e.status = status; throw e; };
 const route = fn => async (req, res, next) => { try { await fn(req, res); } catch (e) { next(e); } };
@@ -150,6 +245,8 @@ app.get('/api/config', (_, res) => res.json({ database: connected ? 'supabase' :
 app.get('/api/curriculum/levels', (_, res) => res.json(getPublicLevels()));
 app.get('/api/curriculum/lessons/:id', (req, res) => { const l = getPublicLesson(req.params.id); if (!l) return res.status(404).json({ error: 'Lesson not found.' }); res.json(l); });
 app.get('/api/practice/catalog', (_, res) => res.json(getPublicPracticeCatalog()));
+app.get('/api/badges', (_, res) => res.json({ categories: BADGE_CATEGORIES, badges: BADGE_CATALOG }));
+app.get('/api/rewards/catalog', (_, res) => res.json({ rewards: REWARD_DEFINITIONS }));
 app.get('/api/ai/status', (_, res) => res.json(getAIStatus()));
 app.post('/api/pronunciation/evaluate', route(async (req, res) => {
   const { targetPhrase, spokenTranscript, spokenText, transcript } = req.body;
@@ -185,7 +282,7 @@ app.post('/api/curriculum/exercises/check', route(async (req, res) => {
   const isCorrect = correctIndex === choice;
   res.json({ isCorrect, correctIndex });
 }));
-const initialProgress = (demo = false) => ({ xp: demo ? 1240 : 0, words: demo ? 450 : 0, streak: demo ? 7 : 0, completed: [], saved: [], goal: 10, todayWords: 0, lastStudy: null, history: {}, dailyDate: today(), practice: { listening: [], speaking: [], pronunciation: [], conversation: [] } });
+const initialProgress = (demo = false) => ({ xp: demo ? 1240 : 0, gems: 0, words: demo ? 450 : 0, streak: demo ? 7 : 0, completed: [], checkpoints: [], saved: [], rewards: {}, walletLedger: [], certificates: {}, goal: 10, todayWords: 0, lastStudy: null, history: {}, dailyDate: today(), practice: { listening: [], speaking: [], pronunciation: [], conversation: [] } });
 const publicUser = u => ({ username: u.username, name: u.name, demo: u.demo });
 async function session(u) { const token = id() + id(); await db.set('sessions', hash(token), { username: u.username, expires: Date.now() + 30 * 86400000 }); return token; }
 app.post('/api/auth/signup', route(async (req, res) => { const { name, password } = req.body; const username = String(req.body.username || '').toLowerCase().trim(); if (!/^[a-z0-9_]{3,20}$/.test(username)) fail('Use 3–20 letters, numbers, or underscores for your username.'); if (typeof name !== 'string' || !name.trim() || name.length > 40) fail('Please enter a name (up to 40 characters).'); if (typeof password !== 'string' || password.length < 8 || password.length > 128) fail('Choose a password with 8–128 characters.'); await locked('signup:' + username, async () => { if (await db.get('accounts', username)) fail('That username is taken. Try another one.', 409); const salt = id(); const u = { username, name: name.trim(), salt, password: scryptSync(password, salt, 64).toString('hex'), demo: false }; await db.set('accounts', username, u); await db.set('progress', username, initialProgress()); res.json({ token: await session(u), user: publicUser(u), progress: initialProgress() }); }); }));
@@ -202,7 +299,101 @@ app.post('/api/auth/demo', route(async (req, res) => {
   res.json({ token: await session(u), user: publicUser(u), progress });
 }));
 app.use('/api', async (req, res, next) => { try { const token = (req.headers.authorization || '').replace(/^Bearer /, ''); const s = token && await db.get('sessions', hash(token)); if (!s || s.expires < Date.now()) fail('Please sign in to continue.', 401); req.user = await db.get('accounts', s.username); if (!req.user) fail('Please sign in again.', 401); req.sessionKey = hash(token); next(); } catch (e) { next(e); } });
-app.get('/api/me', route(async (req, res) => { const p = await db.get('progress', req.user.username); if (!p.practice) p.practice = { listening: [], speaking: [], pronunciation: [], conversation: [] }; if (p.dailyDate !== today()) { p.todayWords = 0; p.dailyDate = today(); await db.set('progress', req.user.username, p); } res.json({ user: publicUser(req.user), progress: p }); }));
+app.get('/api/me', route(async (req, res) => {
+  await locked(req.user.username, async () => {
+    const p = await db.get('progress', req.user.username);
+    if (!p.practice) p.practice = { listening: [], speaking: [], pronunciation: [], conversation: [] };
+    let dirty = false;
+    if (p.dailyDate !== today()) {
+      p.todayWords = 0;
+      p.dailyDate = today();
+      dirty = true;
+    }
+    const prevBadgeCount = Object.keys(p.badges || {}).length;
+    const nowIso = new Date(now()).toISOString();
+    const evalRes = evaluateAchievements(p, { type: 'backfill' }, nowIso);
+    const rewardEval = evaluateRewards(p, nowIso);
+    if (dirty || evalRes.newlyUnlocked.length > 0 || rewardEval.newlyAvailable.length > 0 || prevBadgeCount === 0 && Object.keys(p.achievementProgress || {}).length > 0) {
+      await db.set('progress', req.user.username, p);
+      if (evalRes.newlyUnlocked.length > 0) {
+        await syncRelationalAchievements(req.user.username, p.badges, p.achievementProgress);
+      }
+      if (rewardEval.newlyAvailable.length > 0) {
+        await syncRelationalRewards(req.user.username, p);
+      }
+    }
+    res.json({
+      user: publicUser(req.user),
+      progress: p,
+      newlyUnlockedBadges: evalRes.newlyUnlocked,
+      newlyAvailableRewards: rewardEval.newlyAvailable
+    });
+  });
+}));
+app.get('/api/achievements', route(async (req, res) => {
+  await locked(req.user.username, async () => {
+    const p = await db.get('progress', req.user.username);
+    const evalRes = evaluateAchievements(p, { type: 'backfill' }, new Date(now()).toISOString());
+    await db.set('progress', req.user.username, p);
+    if (evalRes.newlyUnlocked.length > 0) {
+      await syncRelationalAchievements(req.user.username, p.badges, p.achievementProgress);
+    }
+    res.json({
+      catalog: BADGE_CATALOG,
+      categories: BADGE_CATEGORIES,
+      earnedBadges: p.badges || {},
+      achievementProgress: p.achievementProgress || {},
+      summary: formatAchievementSummary(p),
+      newlyUnlockedBadges: evalRes.newlyUnlocked
+    });
+  });
+}));
+app.get('/api/rewards', route(async (req, res) => {
+  await locked(req.user.username, async () => {
+    const p = await db.get('progress', req.user.username);
+    const nowIso = new Date(now()).toISOString();
+    const rewardEval = evaluateRewards(p, nowIso);
+    if (rewardEval.newlyAvailable.length > 0) {
+      await db.set('progress', req.user.username, p);
+      await syncRelationalRewards(req.user.username, p);
+    } else {
+      ensureRewardState(p);
+    }
+    res.json({
+      gems: p.gems || 0,
+      xp: p.xp || 0,
+      rewards: p.rewards || {},
+      walletLedger: p.walletLedger || [],
+      certificates: p.certificates || {},
+      history: formatRewardHistory(p),
+      newlyAvailableRewards: rewardEval.newlyAvailable
+    });
+  });
+}));
+app.post('/api/rewards/:id/claim', route(async (req, res) => {
+  const rewardId = String(req.params.id || '').trim();
+  if (!rewardId) fail('Reward ID is required.', 400);
+  await locked(req.user.username, async () => {
+    const p = await db.get('progress', req.user.username);
+    const nowIso = new Date(now()).toISOString();
+    const result = claimReward(p, rewardId, nowIso);
+    await db.set('progress', req.user.username, p);
+    await syncRelationalRewards(req.user.username, p);
+    if (result.newlyUnlockedBadges.length > 0) {
+      await syncRelationalAchievements(req.user.username, p.badges, p.achievementProgress);
+    }
+    res.json({
+      progress: p,
+      reward: result.reward,
+      alreadyClaimed: result.alreadyClaimed,
+      xpAdded: result.xpAdded,
+      gemsAdded: result.gemsAdded,
+      newlyUnlockedBadges: result.newlyUnlockedBadges,
+      gems: p.gems || 0,
+      xp: p.xp || 0
+    });
+  });
+}));
 app.post('/api/auth/logout', route(async (req, res) => { await db.del('sessions', req.sessionKey); res.json({ ok: true }); }));
 app.get('/api/admin/curriculum/validate', requireAdmin, (req, res) => {
   const report = validateCurriculumCatalog(CURRICULUM_CATALOG);
@@ -212,7 +403,19 @@ app.get('/api/admin/status', requireAdmin, (req, res) => {
   res.json({ ok: true, admin: req.user.username });
 });
 app.post('/api/progress/goal', route(async (req, res) => { if (![5, 10, 20, 30].includes(req.body.goal)) fail('Choose a valid daily goal.'); await locked(req.user.username, async () => { const p = await db.get('progress', req.user.username); p.goal = req.body.goal; await db.set('progress', req.user.username, p); res.json(p); }); }));
-app.post('/api/progress/word', route(async (req, res) => { const allowed = ['Serendipity', 'Resilient', 'Curious', 'Wanderlust', 'Gratitude', 'Flourish', 'Mindful', 'Courage']; if (!allowed.includes(req.body.word)) fail('Word not found.'); await locked(req.user.username, async () => { const p = await db.get('progress', req.user.username); p.saved = p.saved.includes(req.body.word) ? p.saved.filter(w => w !== req.body.word) : [...p.saved, req.body.word]; await db.set('progress', req.user.username, p); res.json(p); }); }));
+app.post('/api/progress/word', route(async (req, res) => {
+  const word = typeof req.body.word === 'string' ? req.body.word.trim() : '';
+  if (!isValidVocabTerm(word)) fail('Word not found.');
+  await locked(req.user.username, async () => {
+    const p = await db.get('progress', req.user.username);
+    ensureAchievementState(p);
+    p.saved = p.saved.includes(word) ? p.saved.filter(w => w !== word) : [...p.saved, word];
+    const evalRes = evaluateAchievements(p, { type: 'vocabulary_saved', word }, new Date(now()).toISOString());
+    await db.set('progress', req.user.username, p);
+    await syncRelationalAchievements(req.user.username, p.badges, p.achievementProgress);
+    res.json({ ...p, newlyUnlockedBadges: evalRes.newlyUnlocked });
+  });
+}));
 app.get('/api/progress/lessons/:id/status', route(async (req, res) => {
   const p = await db.get('progress', req.user.username);
   const prereqCheck = checkLessonPrerequisites(req.params.id, p.completed);
@@ -231,8 +434,11 @@ app.post('/api/progress/lesson', route(async (req, res) => {
   if (!lesson) fail('Lesson not found.', 400);
   const answers = req.body.answers;
   if (!Array.isArray(answers) || answers.length !== lesson.questions.length || answers.some(x => !Number.isInteger(x) || x < 0 || x > 3)) fail('Finish all the questions first.', 400);
+  const durationSec = typeof req.body.durationSec === 'number' && req.body.durationSec > 0 ? req.body.durationSec : null;
+  const exerciseTimesSec = Array.isArray(req.body.exerciseTimesSec) ? req.body.exerciseTimesSec : null;
   await locked(req.user.username, async () => {
     const p = await db.get('progress', req.user.username);
+    ensureAchievementState(p);
     const prereqCheck = checkLessonPrerequisites(lesson.id, p.completed);
     const idx = lessons.findIndex(l => l.id === lesson.id);
     const seqOk = idx === 0 || p.completed.includes(lessons[idx - 1].id);
@@ -253,9 +459,87 @@ app.post('/api/progress/lesson', route(async (req, res) => {
       p.streak = p.lastStudy === today() ? p.streak : p.lastStudy === yesterday ? p.streak + 1 : 1;
       p.lastStudy = today();
       p.history[today()] = (p.history[today()] || 0) + lesson.questions.length;
-      await db.set('progress', req.user.username, p);
     }
-    res.json({ progress: p, correct, total: lesson.questions.length, passed, earned, alreadyCompleted: !fresh });
+    const nowIso = new Date(now()).toISOString();
+    const evalRes = evaluateAchievements(
+      p,
+      {
+        type: 'lesson_completed',
+        lessonId: lesson.id,
+        correct,
+        total: lesson.questions.length,
+        passed,
+        fresh,
+        durationSec,
+        exerciseTimesSec
+      },
+      nowIso
+    );
+    const rewardEval = evaluateRewards(p, nowIso);
+    await db.set('progress', req.user.username, p);
+    await syncRelationalAchievements(req.user.username, p.badges, p.achievementProgress);
+    if (rewardEval.newlyAvailable.length > 0) {
+      await syncRelationalRewards(req.user.username, p);
+    }
+    res.json({
+      progress: p,
+      correct,
+      total: lesson.questions.length,
+      passed,
+      earned,
+      alreadyCompleted: !fresh,
+      newlyUnlockedBadges: evalRes.newlyUnlocked,
+      newlyAvailableRewards: rewardEval.newlyAvailable
+    });
+  });
+}));
+app.post('/api/progress/checkpoint', route(async (req, res) => {
+  const { checkpointId, correct = 0, total = 5, xp = 40 } = req.body || {};
+  if (typeof checkpointId !== 'string' || !checkpointId.startsWith('checkpoint-')) {
+    fail('Invalid checkpoint ID.', 400);
+  }
+  await locked(req.user.username, async () => {
+    const p = await db.get('progress', req.user.username);
+    ensureAchievementState(p);
+    if (!Array.isArray(p.checkpoints)) p.checkpoints = [];
+    const passed = correct >= Math.ceil(total * 0.6);
+    const fresh = !p.checkpoints.includes(checkpointId);
+    let earned = 0;
+    if (passed && fresh) {
+      earned = Number(xp) || 40;
+      p.checkpoints.push(checkpointId);
+      p.xp += earned;
+      p.words += total;
+      if (p.dailyDate !== today()) p.todayWords = 0;
+      p.todayWords += total;
+      p.dailyDate = today();
+      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      p.streak = p.lastStudy === today() ? p.streak : p.lastStudy === yesterday ? p.streak + 1 : 1;
+      p.lastStudy = today();
+      p.history[today()] = (p.history[today()] || 0) + total;
+    }
+    const nowIso = new Date(now()).toISOString();
+    const evalRes = evaluateAchievements(
+      p,
+      { type: 'checkpoint_completed', checkpointId, correct, total, passed },
+      nowIso
+    );
+    const rewardEval = evaluateRewards(p, nowIso);
+    await db.set('progress', req.user.username, p);
+    await syncRelationalAchievements(req.user.username, p.badges, p.achievementProgress);
+    if (rewardEval.newlyAvailable.length > 0) {
+      await syncRelationalRewards(req.user.username, p);
+    }
+    res.json({
+      progress: p,
+      correct,
+      total,
+      passed,
+      earned,
+      alreadyCompleted: !fresh,
+      newlyUnlockedBadges: evalRes.newlyUnlocked,
+      newlyAvailableRewards: rewardEval.newlyAvailable
+    });
   });
 }));
 app.post('/api/practice/listening/submit', route(async (req, res) => {
@@ -286,8 +570,14 @@ app.post('/api/practice/listening/submit', route(async (req, res) => {
       p.streak = p.lastStudy === today() ? p.streak : p.lastStudy === yesterday ? p.streak + 1 : 1;
       p.lastStudy = today();
       p.history[today()] = (p.history[today()] || 0) + keys.length;
-      await db.set('progress', req.user.username, p);
     }
+    const evalRes = evaluateAchievements(
+      p,
+      { type: 'assessment_completed', passed, correct, total: keys.length, moduleId },
+      new Date(now()).toISOString()
+    );
+    await db.set('progress', req.user.username, p);
+    await syncRelationalAchievements(req.user.username, p.badges, p.achievementProgress);
     res.json({
       progress: p,
       correct,
@@ -295,7 +585,8 @@ app.post('/api/practice/listening/submit', route(async (req, res) => {
       passed,
       earned,
       alreadyCompleted: !fresh,
-      solutions: keys
+      solutions: keys,
+      newlyUnlockedBadges: evalRes.newlyUnlocked
     });
   });
 }));
@@ -328,15 +619,18 @@ app.post('/api/practice/speaking/submit', route(async (req, res) => {
       p.streak = p.lastStudy === today() ? p.streak : p.lastStudy === yesterday ? p.streak + 1 : 1;
       p.lastStudy = today();
       p.history[today()] = (p.history[today()] || 0) + words.length;
-      await db.set('progress', req.user.username, p);
     }
+    const evalRes = evaluateAchievements(p, { type: 'daily_activity_completed' }, new Date(now()).toISOString());
+    await db.set('progress', req.user.username, p);
+    await syncRelationalAchievements(req.user.username, p.badges, p.achievementProgress);
     res.json({
       progress: p,
       passed: true,
       wordCount: words.length,
       earned,
       alreadyCompleted: !fresh,
-      feedback: 'Great speaking practice! Voice recorded and verified.'
+      feedback: 'Great speaking practice! Voice recorded and verified.',
+      newlyUnlockedBadges: evalRes.newlyUnlocked
     });
   });
 }));
@@ -366,13 +660,20 @@ app.post('/api/practice/pronunciation/submit', route(async (req, res) => {
       p.streak = p.lastStudy === today() ? p.streak : p.lastStudy === yesterday ? p.streak + 1 : 1;
       p.lastStudy = today();
       p.history[today()] = (p.history[today()] || 0) + 1;
-      await db.set('progress', req.user.username, p);
     }
+    const evalRes = evaluateAchievements(
+      p,
+      evalResult.passed ? { type: 'daily_activity_completed' } : { type: 'evaluate' },
+      new Date(now()).toISOString()
+    );
+    await db.set('progress', req.user.username, p);
+    await syncRelationalAchievements(req.user.username, p.badges, p.achievementProgress);
     res.json({
       ...evalResult,
       progress: p,
       earned,
-      alreadyCompleted: !fresh
+      alreadyCompleted: !fresh,
+      newlyUnlockedBadges: evalRes.newlyUnlocked
     });
   });
 }));
@@ -632,7 +933,7 @@ function soloView(g, u, timeOverride) {
     canAdvance,
     stats,
     serverTime: currentTime,
-    question: g.status === 'playing' && current ? {
+    question: (g.status === 'playing' || (g.status === 'finished' && (answered !== undefined || details))) && current ? {
       id: current.id || `q_${g.index}`,
       prompt: current[0],
       options: current[1]
@@ -872,6 +1173,26 @@ app.post('/api/games/solo/answer', route(async (req, res) => {
 
     if (g.index + 1 >= g.questions.length) {
       g.status = 'finished';
+    }
+
+    if (isCorrect) {
+      await locked(req.user.username, async () => {
+        const p = await db.get('progress', req.user.username);
+        if (p) {
+          const elapsedSec = Math.max(0, Math.floor((currentTime - (g.questionStartedAt || g.startedAt || currentTime)) / 1000));
+          const isGrammar = g.topic === 'Grammar';
+          evaluateAchievements(
+            p,
+            {
+              type: isGrammar ? 'grammar_exercise_completed' : 'game_answer_correct',
+              count: 1,
+              fast: elapsedSec <= 15
+            },
+            new Date(now()).toISOString()
+          );
+          await db.set('progress', req.user.username, p);
+        }
+      });
     }
 
     await db.set('solo', req.user.username, g);
@@ -1153,6 +1474,26 @@ app.post('/api/games/:code/answer', route(async (req, res) => {
     const allDone = activePlayers.length > 0 && activePlayers.every(mem => mem.completed || (mem.index ?? 0) >= g.questions.length);
     if (allDone) {
       g.status = 'finished';
+    }
+
+    if (isCorrect) {
+      await locked(req.user.username, async () => {
+        const p = await db.get('progress', req.user.username);
+        if (p) {
+          const elapsedSec = Math.max(0, Math.floor((currentTime - (m.questionStartedAt || g.startedAt || currentTime)) / 1000));
+          const isGrammar = g.topic === 'Grammar';
+          evaluateAchievements(
+            p,
+            {
+              type: isGrammar ? 'grammar_exercise_completed' : 'game_answer_correct',
+              count: 1,
+              fast: elapsedSec <= 15
+            },
+            new Date(now()).toISOString()
+          );
+          await db.set('progress', req.user.username, p);
+        }
+      });
     }
 
     await db.set('games', g.code, g);

@@ -2823,21 +2823,82 @@ export function calculateLevelProgress(level, userCompleted = []) {
 }
 
 /**
+ * Builds flat path lookup structures for checkpoints and prerequisites across all CEFR levels.
+ */
+const FLAT_PATH_ITEMS = [];
+const CHECKPOINT_UNIT_MAP = new Map();
+const PRECEDING_CHECKPOINT_MAP = new Map();
+
+for (const level of CEFR_LEVELS) {
+  for (const section of level.sections || []) {
+    for (const unit of section.units || []) {
+      const unitActualIds = [];
+      for (const item of unit.lessons || []) {
+        if (item.isCheckpoint) {
+          CHECKPOINT_UNIT_MAP.set(item.id, {
+            level,
+            section,
+            unit,
+            precedingRealIds: [...unitActualIds]
+          });
+        } else if (item.realLessonId) {
+          unitActualIds.push(item.realLessonId);
+          const prevItem = FLAT_PATH_ITEMS[FLAT_PATH_ITEMS.length - 1];
+          if (prevItem && prevItem.isCheckpoint) {
+            PRECEDING_CHECKPOINT_MAP.set(item.realLessonId, prevItem);
+          }
+        }
+        FLAT_PATH_ITEMS.push(item);
+      }
+    }
+  }
+}
+
+export function getCheckpointUnitLessons(checkpointId) {
+  return CHECKPOINT_UNIT_MAP.get(checkpointId) || null;
+}
+
+export function getPrecedingCheckpointForLesson(realLessonId) {
+  return PRECEDING_CHECKPOINT_MAP.get(realLessonId) || null;
+}
+
+export function getNextPathItem(currentId) {
+  const idx = FLAT_PATH_ITEMS.findIndex(item => (item.realLessonId || item.id) === currentId);
+  if (idx === -1 || idx >= FLAT_PATH_ITEMS.length - 1) return null;
+  return FLAT_PATH_ITEMS[idx + 1];
+}
+
+/**
  * Gets the status of an individual lesson node:
  * - 'completed'
  * - 'current' (recommended next lesson)
  * - 'available'
  * - 'locked'
  */
-export function getLessonStatus(lesson, userCompleted = [], activeLessonId = null) {
+export function getLessonStatus(lesson, userCompleted = [], activeLessonId = null, userCheckpoints = []) {
   const isReal = !!lesson.realLessonId;
-  const isCompleted = userCompleted.includes(lesson.realLessonId || lesson.id);
+  const completedCheckpoints = Array.isArray(userCheckpoints) ? userCheckpoints : [];
+  const isCompleted = userCompleted.includes(lesson.realLessonId || lesson.id) || completedCheckpoints.includes(lesson.id);
 
   if (isCompleted) {
     return 'completed';
   }
 
+  if (lesson.isCheckpoint) {
+    const info = CHECKPOINT_UNIT_MAP.get(lesson.id);
+    const prereqIds = info?.precedingRealIds || [];
+    if (prereqIds.length > 0 && prereqIds.every(id => userCompleted.includes(id))) {
+      return 'current';
+    }
+    return 'locked';
+  }
+
   if (isReal) {
+    const prevCheckpoint = PRECEDING_CHECKPOINT_MAP.get(lesson.realLessonId);
+    if (prevCheckpoint && !completedCheckpoints.includes(prevCheckpoint.id) && !userCompleted.includes(prevCheckpoint.id)) {
+      return 'locked';
+    }
+
     // If this lesson is the currently active lesson recommendation
     if (activeLessonId && lesson.realLessonId === activeLessonId) {
       return 'current';
@@ -2852,12 +2913,6 @@ export function getLessonStatus(lesson, userCompleted = [], activeLessonId = nul
     if (userCompleted.includes(prevReal.id)) {
       return activeLessonId === lesson.realLessonId ? 'current' : 'available';
     }
-    return 'locked';
-  }
-
-  // Demonstration curriculum lessons:
-  // Checkpoints are locked until the unit's preceding lessons are completed
-  if (lesson.isCheckpoint) {
     return 'locked';
   }
 

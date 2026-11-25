@@ -12,10 +12,11 @@ export function isNativePlatform() {
   );
 }
 
-export const API_BASE = (
-  import.meta.env.VITE_API_BASE_URL ||
-  (isNativePlatform() ? 'https://lingo-ruby-three.vercel.app' : '')
-).replace(/\/$/, '');
+const rawEnvBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
+export const API_BASE = isNativePlatform()
+  ? (rawEnvBase || 'https://lingo-ruby-three.vercel.app')
+  : '';
 
 export function getApiUrl(path) {
   const cleanPath = path.startsWith('/') ? path : '/' + path;
