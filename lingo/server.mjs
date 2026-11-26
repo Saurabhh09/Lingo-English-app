@@ -17,6 +17,21 @@ import { BADGE_CATALOG, BADGE_CATEGORIES } from './server/badgeCatalog.mjs';
 import { evaluateAchievements, formatAchievementSummary, isValidVocabTerm, ensureAchievementState } from './server/achievementEngine.mjs';
 import { REWARD_DEFINITIONS } from './server/rewardDefinitions.mjs';
 import { evaluateRewards, claimReward, formatRewardHistory, ensureRewardState } from './server/rewardEngine.mjs';
+import {
+  deriveLingoId,
+  ensureSocialState,
+  buildPublicProfileCard,
+  pairKey,
+  isBlockedBetween,
+  areFriends,
+  getFriendUsernames,
+  getFriendStatus,
+  pushNotification,
+  expireStaleInvitations,
+  syncSocialToSupabase,
+  INVITE_TTL_MS,
+  GAME_INVITE_TTL_MS
+} from './server/socialEngine.mjs';
 
 const PRESET_TOPIC_NAMES = new Set([
   'Mixed English',
@@ -70,6 +85,51 @@ const dataPath = (process.env.NODE_ENV !== 'production' && process.env.DATA_PATH
 let local = fs.existsSync(dataPath) ? JSON.parse(fs.readFileSync(dataPath, 'utf8')) : { accounts: {}, sessions: {}, progress: {}, games: {}, solo: {} };
 if (!local.solo) local.solo = {};
 const db = { async get(table, id) { if (!supabase) return structuredClone(local[table]?.[id] || null); const { data, error } = await supabase.from('lingo_' + table).select('payload').eq('id', id).maybeSingle(); if (error) throw Error('Database is not ready. Apply supabase/schema.sql.'); return data?.payload || null; }, async set(table, id, payload) { if (supabase) { const { error } = await supabase.from('lingo_' + table).upsert({ id, payload }); if (error) throw Error('Database write failed. Check your Supabase setup.'); } else { if (!local[table]) local[table] = {}; local[table][id] = structuredClone(payload); try { fs.writeFileSync(dataPath + '.tmp', JSON.stringify(local)); fs.renameSync(dataPath + '.tmp', dataPath); } catch { fs.writeFileSync(dataPath, JSON.stringify(local)); } } }, async del(table, id) { if (supabase) { const { error } = await supabase.from('lingo_' + table).delete().eq('id', id); if (error) throw error; } else { if (local[table]) delete local[table][id]; fs.writeFileSync(dataPath, JSON.stringify(local)); } } };
+const SOCIAL_STATE_ID = '__lingo_social_state__';
+async function getSocialState() {
+  const raw = await db.get('progress', SOCIAL_STATE_ID);
+  const s = ensureSocialState(raw);
+  if (expireStaleInvitations(s, now())) {
+    await db.set('progress', SOCIAL_STATE_ID, s);
+  }
+  return s;
+}
+async function saveSocialState(s) {
+  await db.set('progress', SOCIAL_STATE_ID, s);
+  await syncSocialToSupabase(supabase, s);
+}
+async function listAccountsAndProgress() {
+  if (supabase) {
+    const [accRes, progRes] = await Promise.all([
+      supabase.from('lingo_accounts').select('id, payload').limit(5000),
+      supabase.from('lingo_progress').select('id, payload').neq('id', SOCIAL_STATE_ID).limit(5000)
+    ]);
+    if (accRes.error) throw new Error('Failed to load accounts: ' + accRes.error.message);
+    if (progRes.error) throw new Error('Failed to load progress: ' + progRes.error.message);
+    const accountsMap = {};
+    for (const r of (accRes.data || [])) {
+      if (!r?.id || !r?.payload) continue;
+      const acc = typeof r.payload === 'string' ? JSON.parse(r.payload) : { ...r.payload };
+      if (!acc.username) acc.username = r.id;
+      if (!acc.lingoId) acc.lingoId = deriveLingoId(acc.username);
+      accountsMap[r.id] = acc;
+    }
+    const progressMap = {};
+    for (const r of (progRes.data || [])) {
+      if (!r?.id || !r?.payload) continue;
+      progressMap[r.id] = typeof r.payload === 'string' ? JSON.parse(r.payload) : r.payload;
+    }
+    return { accountsMap, progressMap };
+  }
+  const accountsMap = {};
+  for (const [k, v] of Object.entries(local.accounts || {})) {
+    if (!v) continue;
+    accountsMap[k] = { ...v, username: v.username || k, lingoId: v.lingoId || deriveLingoId(v.username || k) };
+  }
+  const progressMap = { ...(local.progress || {}) };
+  delete progressMap[SOCIAL_STATE_ID];
+  return { accountsMap, progressMap };
+}
 const id = () => randomBytes(16).toString('hex'); const hash = s => createHash('sha256').update(s).digest('hex'); const today = () => new Date().toISOString().slice(0, 10);
 
 let badgesCatalogSeeded = false;
@@ -283,10 +343,10 @@ app.post('/api/curriculum/exercises/check', route(async (req, res) => {
   res.json({ isCorrect, correctIndex });
 }));
 const initialProgress = (demo = false) => ({ xp: demo ? 1240 : 0, gems: 0, words: demo ? 450 : 0, streak: demo ? 7 : 0, completed: [], checkpoints: [], saved: [], rewards: {}, walletLedger: [], certificates: {}, goal: 10, todayWords: 0, lastStudy: null, history: {}, dailyDate: today(), practice: { listening: [], speaking: [], pronunciation: [], conversation: [] } });
-const publicUser = u => ({ username: u.username, name: u.name, demo: u.demo });
+const publicUser = u => ({ username: u.username, lingoId: u.lingoId || deriveLingoId(u.username), name: u.name, avatar: u.avatar || '🌱', avatarColor: u.avatarColor || 'lime', demo: u.demo });
 async function session(u) { const token = id() + id(); await db.set('sessions', hash(token), { username: u.username, expires: Date.now() + 30 * 86400000 }); return token; }
-app.post('/api/auth/signup', route(async (req, res) => { const { name, password } = req.body; const username = String(req.body.username || '').toLowerCase().trim(); if (!/^[a-z0-9_]{3,20}$/.test(username)) fail('Use 3–20 letters, numbers, or underscores for your username.'); if (typeof name !== 'string' || !name.trim() || name.length > 40) fail('Please enter a name (up to 40 characters).'); if (typeof password !== 'string' || password.length < 8 || password.length > 128) fail('Choose a password with 8–128 characters.'); await locked('signup:' + username, async () => { if (await db.get('accounts', username)) fail('That username is taken. Try another one.', 409); const salt = id(); const u = { username, name: name.trim(), salt, password: scryptSync(password, salt, 64).toString('hex'), demo: false }; await db.set('accounts', username, u); await db.set('progress', username, initialProgress()); res.json({ token: await session(u), user: publicUser(u), progress: initialProgress() }); }); }));
-app.post('/api/auth/login', route(async (req, res) => { const username = String(req.body.username || '').toLowerCase().trim(); const u = await db.get('accounts', username); if (!u || typeof req.body.password !== 'string' || req.body.password.length > 128 || !timingSafeEqual(Buffer.from(u.password, 'hex'), scryptSync(req.body.password, u.salt, 64))) fail('Username or password doesn’t match.', 401); res.json({ token: await session(u), user: publicUser(u), progress: await db.get('progress', username) }); }));
+app.post('/api/auth/signup', route(async (req, res) => { const { name, password } = req.body; const username = String(req.body.username || '').toLowerCase().trim(); if (!/^[a-z0-9_]{3,20}$/.test(username)) fail('Use 3–20 letters, numbers, or underscores for your username.'); if (typeof name !== 'string' || !name.trim() || name.length > 40) fail('Please enter a name (up to 40 characters).'); if (typeof password !== 'string' || password.length < 8 || password.length > 128) fail('Choose a password with 8–128 characters.'); await locked('signup:' + username, async () => { if (await db.get('accounts', username)) fail('That username is taken. Try another one.', 409); const salt = id(); const u = { username, lingoId: deriveLingoId(username), avatar: '🌱', avatarColor: 'lime', name: name.trim(), salt, password: scryptSync(password, salt, 64).toString('hex'), demo: false }; await db.set('accounts', username, u); await db.set('progress', username, initialProgress()); res.json({ token: await session(u), user: publicUser(u), progress: initialProgress() }); }); }));
+app.post('/api/auth/login', route(async (req, res) => { const username = String(req.body.username || '').toLowerCase().trim(); const u = await db.get('accounts', username); if (!u || typeof req.body.password !== 'string' || req.body.password.length > 128 || !timingSafeEqual(Buffer.from(u.password, 'hex'), scryptSync(req.body.password, u.salt, 64))) fail('Username or password doesn’t match.', 401); if (!u.lingoId || !u.avatar || !u.avatarColor) { u.lingoId = u.lingoId || deriveLingoId(u.username); u.avatar = u.avatar || '🌱'; u.avatarColor = u.avatarColor || 'lime'; await db.set('accounts', username, u); } res.json({ token: await session(u), user: publicUser(u), progress: await db.get('progress', username) }); }));
 app.post('/api/auth/demo', route(async (req, res) => {
   if (connected) {
     fail('Demo accounts cannot be created when connected to Supabase. Please sign in or create an account.', 403);
@@ -300,6 +360,12 @@ app.post('/api/auth/demo', route(async (req, res) => {
 }));
 app.use('/api', async (req, res, next) => { try { const token = (req.headers.authorization || '').replace(/^Bearer /, ''); const s = token && await db.get('sessions', hash(token)); if (!s || s.expires < Date.now()) fail('Please sign in to continue.', 401); req.user = await db.get('accounts', s.username); if (!req.user) fail('Please sign in again.', 401); req.sessionKey = hash(token); next(); } catch (e) { next(e); } });
 app.get('/api/me', route(async (req, res) => {
+  if (!req.user.lingoId || !req.user.avatar || !req.user.avatarColor) {
+    req.user.lingoId = req.user.lingoId || deriveLingoId(req.user.username);
+    req.user.avatar = req.user.avatar || '🌱';
+    req.user.avatarColor = req.user.avatarColor || 'lime';
+    await db.set('accounts', req.user.username, req.user);
+  }
   await locked(req.user.username, async () => {
     const p = await db.get('progress', req.user.username);
     if (!p.practice) p.practice = { listening: [], speaking: [], pronunciation: [], conversation: [] };
@@ -1564,10 +1630,1104 @@ app.post('/api/games/:code/leave', route(async (req, res) => {
         }
       }
       await db.set('games', g.code, g);
+      if (g.status === 'finished') {
+        await locked('social:global', async () => {
+          const s = await getSocialState();
+          let changed = false;
+          for (const gi of s.gameInvitations) {
+            if (gi.gameId === g.code && gi.status === 'pending') {
+              gi.status = 'cancelled';
+              gi.respondedAt = new Date(now()).toISOString();
+              changed = true;
+            }
+          }
+          if (changed) await saveSocialState(s);
+        });
+      }
     }
     res.json({ ok: true });
   });
 }));
+
+// ============================================================================
+// LINGO SOCIAL: FRIENDS, COMMUNITIES, GAME INVITATIONS & NOTIFICATIONS
+// ============================================================================
+
+app.post('/api/social/presence', route(async (req, res) => {
+  await locked('social:global', async () => {
+    const s = await getSocialState();
+    const nowMs = now();
+    s.presence[req.user.username] = nowMs;
+    await saveSocialState(s);
+
+    const pendingFriendRequests = s.friendRequests.filter(
+      r => r.receiverId === req.user.username && r.status === 'pending'
+    ).length;
+    const pendingCommunityInvites = s.communityInvitations.filter(
+      i => i.inviteeId === req.user.username && i.status === 'pending'
+    ).length;
+    const pendingGameInvs = s.gameInvitations.filter(
+      gi => gi.receiverId === req.user.username && gi.status === 'pending'
+    );
+    let activeGameInv = null;
+    for (const gi of pendingGameInvs) {
+      const g = await db.get('games', gi.gameId);
+      if (g && (g.status === 'waiting' || g.status === 'countdown')) {
+        const activeCount = Object.values(g.members || {}).filter(m => m.role !== 'spectator').length;
+        const senderAcc = await db.get('accounts', gi.senderId);
+        activeGameInv = {
+          ...gi,
+          topic: g.topic,
+          difficulty: g.difficulty,
+          playerCount: activeCount,
+          maxPlayers: MAX_ACTIVE_PLAYERS,
+          senderName: senderAcc?.name || gi.senderId
+        };
+        break;
+      }
+    }
+    const unreadNotifs = s.notifications.filter(
+      n => n.userId === req.user.username && !n.isRead
+    ).length;
+
+    res.json({
+      ok: true,
+      unreadCount: unreadNotifs,
+      socialBadgeCount: pendingFriendRequests + pendingCommunityInvites + (activeGameInv ? 1 : 0),
+      pendingFriendRequests,
+      pendingCommunityInvites,
+      pendingGameInvitesCount: pendingGameInvs.length,
+      latestGameInvite: activeGameInv
+    });
+  });
+}));
+
+app.post('/api/social/profile', route(async (req, res) => {
+  const { name, avatar, avatarColor } = req.body || {};
+  await locked('account:' + req.user.username, async () => {
+    const u = await db.get('accounts', req.user.username);
+    if (!u) fail('Account not found.', 404);
+    if (typeof name === 'string' && name.trim() && name.trim().length <= 40) {
+      u.name = name.trim();
+    }
+    if (typeof avatar === 'string' && avatar.trim() && avatar.trim().length <= 8) {
+      u.avatar = avatar.trim();
+    }
+    if (['lime', 'blue', 'purple', 'yellow', 'coral'].includes(avatarColor)) {
+      u.avatarColor = avatarColor;
+    }
+    if (!u.lingoId) u.lingoId = deriveLingoId(u.username);
+    await db.set('accounts', req.user.username, u);
+    res.json({ user: publicUser(u) });
+  });
+}));
+
+app.get('/api/social/overview', route(async (req, res) => {
+  await locked('social:global', async () => {
+    const s = await getSocialState();
+    const nowMs = now();
+    s.presence[req.user.username] = nowMs;
+    await saveSocialState(s);
+
+    const { accountsMap, progressMap } = await listAccountsAndProgress();
+    const me = req.user.username;
+
+    const friendNames = getFriendUsernames(s, me).filter(u => !isBlockedBetween(s, me, u));
+    const friends = friendNames
+      .map(uname => buildPublicProfileCard(accountsMap[uname], progressMap[uname], s.presence, nowMs))
+      .filter(Boolean)
+      .sort((a, b) => Number(b.isOnline) - Number(a.isOnline) || b.xp - a.xp);
+
+    const incomingRequests = s.friendRequests
+      .filter(r => r.receiverId === me && r.status === 'pending' && accountsMap[r.senderId])
+      .map(r => ({
+        ...r,
+        sender: buildPublicProfileCard(accountsMap[r.senderId], progressMap[r.senderId], s.presence, nowMs)
+      }));
+
+    const outgoingRequests = s.friendRequests
+      .filter(r => r.senderId === me && r.status === 'pending' && accountsMap[r.receiverId])
+      .map(r => ({
+        ...r,
+        receiver: buildPublicProfileCard(accountsMap[r.receiverId], progressMap[r.receiverId], s.presence, nowMs)
+      }));
+
+    const blockedUsers = s.blocks
+      .filter(b => b.blockerId === me && accountsMap[b.blockedId])
+      .map(b => ({
+        id: b.id,
+        username: b.blockedId,
+        name: accountsMap[b.blockedId]?.name || b.blockedId,
+        blockedAt: b.createdAt
+      }));
+
+    const myMemberships = s.communityMembers.filter(m => m.userId === me);
+    const communities = myMemberships
+      .map(mem => {
+        const comm = s.communities.find(c => c.id === mem.communityId);
+        if (!comm) return null;
+        const members = s.communityMembers.filter(m => m.communityId === comm.id);
+        return {
+          ...comm,
+          myRole: mem.role,
+          memberCount: members.length,
+          memberUsernames: members.map(m => m.userId)
+        };
+      })
+      .filter(Boolean);
+
+    const communityInvitations = s.communityInvitations
+      .filter(inv => inv.inviteeId === me && inv.status === 'pending')
+      .map(inv => {
+        const comm = s.communities.find(c => c.id === inv.communityId);
+        const inviter = accountsMap[inv.inviterId];
+        if (!comm) return null;
+        const memberCount = s.communityMembers.filter(m => m.communityId === comm.id).length;
+        return {
+          ...inv,
+          communityName: comm.name,
+          communityIcon: comm.icon || '🌟',
+          communityDescription: comm.description || '',
+          memberCount,
+          inviterName: inviter?.name || inv.inviterId
+        };
+      })
+      .filter(Boolean);
+
+    const gameInvitations = [];
+    for (const gi of s.gameInvitations) {
+      if (gi.receiverId !== me || gi.status !== 'pending') continue;
+      const g = await db.get('games', gi.gameId);
+      if (!g || g.status === 'finished' || g.status === 'playing') {
+        continue;
+      }
+      const activeCount = Object.values(g.members || {}).filter(m => m.role !== 'spectator').length;
+      const senderAcc = accountsMap[gi.senderId];
+      gameInvitations.push({
+        ...gi,
+        topic: g.topic,
+        difficulty: g.difficulty,
+        cefrLevel: g.cefrLevel,
+        duration: g.duration,
+        playerCount: activeCount,
+        maxPlayers: MAX_ACTIVE_PLAYERS,
+        senderName: senderAcc?.name || gi.senderId,
+        senderAvatar: senderAcc?.avatar || '🌱'
+      });
+    }
+
+    const notifications = s.notifications
+      .filter(n => n.userId === me)
+      .slice(0, 60);
+
+    const unreadCount = notifications.filter(n => !n.isRead).length;
+
+    res.json({
+      me: buildPublicProfileCard(accountsMap[me] || req.user, progressMap[me], s.presence, nowMs),
+      friends,
+      incomingRequests,
+      outgoingRequests,
+      blockedUsers,
+      communities,
+      communityInvitations,
+      gameInvitations,
+      notifications,
+      unreadCount
+    });
+  });
+}));
+
+app.get('/api/social/search', route(async (req, res) => {
+  const rawQ = String(req.query.q || '').trim().toLowerCase();
+  const q = rawQ.replace(/^@+/, '');
+  if (q.length < 2) return res.json({ users: [] });
+
+  await locked('social:global', async () => {
+    const s = await getSocialState();
+    const nowMs = now();
+    const { accountsMap, progressMap } = await listAccountsAndProgress();
+    const me = req.user.username;
+
+    const scored = [];
+    for (const acc of Object.values(accountsMap)) {
+      if (!acc || acc.username === me) continue;
+      if (isBlockedBetween(s, me, acc.username)) continue;
+      const lingoId = (acc.lingoId || deriveLingoId(acc.username)).toLowerCase();
+      const uname = String(acc.username || '').toLowerCase();
+      const dname = String(acc.name || '').toLowerCase();
+
+      let score = 0;
+      if (uname === q || lingoId === q) score = 3;
+      else if (uname.startsWith(q) || lingoId.startsWith(q) || dname.startsWith(q)) score = 2;
+      else if (uname.includes(q) || lingoId.includes(q) || dname.includes(q)) score = 1;
+
+      if (score > 0) {
+        const card = buildPublicProfileCard(acc, progressMap[acc.username], s.presence, nowMs);
+        scored.push({
+          score,
+          item: {
+            ...card,
+            friendStatus: getFriendStatus(s, me, acc.username)
+          }
+        });
+      }
+    }
+    scored.sort((a, b) => b.score - a.score || a.item.username.localeCompare(b.item.username));
+    res.json({ users: scored.slice(0, 25).map(x => x.item) });
+  });
+}));
+
+app.get('/api/social/users/:username', route(async (req, res) => {
+  const target = String(req.params.username || '').toLowerCase().trim();
+  await locked('social:global', async () => {
+    const s = await getSocialState();
+    const nowMs = now();
+    const me = req.user.username;
+    if (target !== me && isBlockedBetween(s, me, target)) {
+      fail('You cannot view this profile.', 403);
+    }
+    const { accountsMap, progressMap } = await listAccountsAndProgress();
+    const acc = accountsMap[target];
+    if (!acc) fail('User not found.', 404);
+    const prog = progressMap[target];
+    const card = buildPublicProfileCard(acc, prog, s.presence, nowMs);
+
+    const myFriends = new Set(getFriendUsernames(s, me));
+    const theirFriends = getFriendUsernames(s, target);
+    const mutualFriendsCount = target === me ? 0 : theirFriends.filter(f => myFriends.has(f)).length;
+
+    const myComms = new Set(s.communityMembers.filter(m => m.userId === me).map(m => m.communityId));
+    const sharedCommunities = s.communityMembers
+      .filter(m => m.userId === target && myComms.has(m.communityId))
+      .map(m => {
+        const c = s.communities.find(cm => cm.id === m.communityId);
+        return c ? { id: c.id, name: c.name, icon: c.icon } : null;
+      })
+      .filter(Boolean);
+
+    res.json({
+      profile: {
+        ...card,
+        friendStatus: getFriendStatus(s, me, target),
+        mutualFriendsCount,
+        sharedCommunities,
+        earnedBadgeIds: Object.keys(prog?.badges || {})
+      }
+    });
+  });
+}));
+
+app.post('/api/social/friends/request', route(async (req, res) => {
+  const { username, lingoId } = req.body || {};
+  await locked('social:global', async () => {
+    const s = await getSocialState();
+    const { accountsMap } = await listAccountsAndProgress();
+    const me = req.user.username;
+
+    let targetAcc = null;
+    if (typeof username === 'string' && username.trim()) {
+      targetAcc = accountsMap[username.toLowerCase().trim()];
+    } else if (typeof lingoId === 'string' && lingoId.trim()) {
+      const targetId = lingoId.trim().toUpperCase();
+      targetAcc = Object.values(accountsMap).find(
+        a => (a.lingoId || deriveLingoId(a.username)).toUpperCase() === targetId
+      );
+    }
+
+    if (!targetAcc) fail('User not found.', 404);
+    const target = targetAcc.username;
+    if (target === me) fail('You cannot send a friend request to yourself.', 400);
+    if (isBlockedBetween(s, me, target)) fail('Cannot send friend request to this user.', 403);
+    if (areFriends(s, me, target)) fail('You are already friends.', 409);
+
+    const dupOut = s.friendRequests.find(
+      r => r.senderId === me && r.receiverId === target && r.status === 'pending'
+    );
+    if (dupOut) fail('Friend request already sent.', 409);
+
+    const nowIso = new Date(now()).toISOString();
+    const inverse = s.friendRequests.find(
+      r => r.senderId === target && r.receiverId === me && r.status === 'pending'
+    );
+    if (inverse) {
+      inverse.status = 'accepted';
+      inverse.respondedAt = nowIso;
+      const [u1, u2] = pairKey(me, target);
+      if (!areFriends(s, u1, u2)) {
+        s.friendships.push({ id: `fs_${u1}_${u2}`, userOneId: u1, userTwoId: u2, createdAt: nowIso });
+      }
+      pushNotification(s, {
+        userId: target,
+        type: 'friendship_update',
+        title: 'Friend Request Accepted',
+        message: `${req.user.name} accepted your friend request!`,
+        relatedEntityId: me
+      }, now());
+      await saveSocialState(s);
+      return res.json({ status: 'accepted', friendUsername: target });
+    }
+
+    const reqObj = {
+      id: `fr_${randomBytes(8).toString('hex')}`,
+      senderId: me,
+      receiverId: target,
+      status: 'pending',
+      createdAt: nowIso,
+      respondedAt: null
+    };
+    s.friendRequests.push(reqObj);
+    pushNotification(s, {
+      userId: target,
+      type: 'friend_request',
+      title: 'New Friend Request',
+      message: `${req.user.name} (@${me}) wants to be your study friend.`,
+      relatedEntityId: reqObj.id,
+      metadata: { senderUsername: me, requestId: reqObj.id }
+    }, now());
+    await saveSocialState(s);
+    res.json({ status: 'pending', request: reqObj });
+  });
+}));
+
+app.post('/api/social/friends/requests/:reqId/respond', route(async (req, res) => {
+  const { reqId } = req.params;
+  const { action } = req.body || {};
+  if (!['accept', 'reject', 'cancel'].includes(action)) fail('Invalid friend request action.', 400);
+
+  await locked('social:global', async () => {
+    const s = await getSocialState();
+    const fr = s.friendRequests.find(r => r.id === reqId);
+    if (!fr) fail('Friend request not found.', 404);
+    if (fr.status !== 'pending') fail('This friend request has already been handled.', 400);
+
+    const me = req.user.username;
+    if ((action === 'accept' || action === 'reject') && fr.receiverId !== me) {
+      fail('You are not authorized to respond to this friend request.', 403);
+    }
+    if (action === 'cancel' && fr.senderId !== me) {
+      fail('Only the sender can cancel an outgoing friend request.', 403);
+    }
+
+    const nowIso = new Date(now()).toISOString();
+    if (action === 'accept') {
+      fr.status = 'accepted';
+      fr.respondedAt = nowIso;
+      const [u1, u2] = pairKey(fr.senderId, fr.receiverId);
+      if (!areFriends(s, u1, u2)) {
+        s.friendships.push({ id: `fs_${u1}_${u2}`, userOneId: u1, userTwoId: u2, createdAt: nowIso });
+      }
+      pushNotification(s, {
+        userId: fr.senderId,
+        type: 'friendship_update',
+        title: 'You’re Friends!',
+        message: `${req.user.name} (@${me}) accepted your friend request.`,
+        relatedEntityId: me
+      }, now());
+    } else if (action === 'reject') {
+      fr.status = 'rejected';
+      fr.respondedAt = nowIso;
+    } else {
+      fr.status = 'cancelled';
+      fr.respondedAt = nowIso;
+    }
+
+    for (const n of s.notifications) {
+      if (n.userId === me && n.relatedEntityId === reqId) n.isRead = true;
+    }
+    await saveSocialState(s);
+    res.json({ ok: true, request: fr });
+  });
+}));
+
+app.delete('/api/social/friends/:username', route(async (req, res) => {
+  const target = String(req.params.username || '').toLowerCase().trim();
+  await locked('social:global', async () => {
+    const s = await getSocialState();
+    const [u1, u2] = pairKey(req.user.username, target);
+    const before = s.friendships.length;
+    s.friendships = s.friendships.filter(f => !(f.userOneId === u1 && f.userTwoId === u2));
+    if (s.friendships.length === before) fail('Friendship not found.', 404);
+    await saveSocialState(s);
+    if (supabase) {
+      try {
+        await supabase.from('friendships').delete().match({ user_one_id: u1, user_two_id: u2 });
+      } catch { }
+    }
+    res.json({ ok: true });
+  });
+}));
+
+app.post('/api/social/blocks', route(async (req, res) => {
+  const { username, action = 'block' } = req.body || {};
+  const target = String(username || '').toLowerCase().trim();
+  if (!target || target === req.user.username) fail('Choose a valid user.', 400);
+
+  await locked('social:global', async () => {
+    const s = await getSocialState();
+    const me = req.user.username;
+    if (action === 'unblock') {
+      s.blocks = s.blocks.filter(b => !(b.blockerId === me && b.blockedId === target));
+      await saveSocialState(s);
+      if (supabase) {
+        try { await supabase.from('user_blocks').delete().match({ blocker_id: me, blocked_id: target }); } catch { }
+      }
+      return res.json({ ok: true, blocked: false });
+    }
+    if (!s.blocks.some(b => b.blockerId === me && b.blockedId === target)) {
+      s.blocks.push({ id: `blk_${me}_${target}`, blockerId: me, blockedId: target, createdAt: new Date(now()).toISOString() });
+    }
+    const [u1, u2] = pairKey(me, target);
+    s.friendships = s.friendships.filter(f => !(f.userOneId === u1 && f.userTwoId === u2));
+    for (const r of s.friendRequests) {
+      if (r.status === 'pending' && ((r.senderId === me && r.receiverId === target) || (r.senderId === target && r.receiverId === me))) {
+        r.status = 'cancelled';
+      }
+    }
+    for (const gi of s.gameInvitations) {
+      if (gi.status === 'pending' && ((gi.senderId === me && gi.receiverId === target) || (gi.senderId === target && gi.receiverId === me))) {
+        gi.status = 'cancelled';
+      }
+    }
+    await saveSocialState(s);
+    res.json({ ok: true, blocked: true });
+  });
+}));
+
+// --- PRIVATE COMMUNITIES ---
+
+app.post('/api/communities', route(async (req, res) => {
+  const { name, description = '', icon = '🌟', allowMemberInvites = false, inviteUsernames = [] } = req.body || {};
+  const cleanName = typeof name === 'string' ? name.trim() : '';
+  if (cleanName.length < 2 || cleanName.length > 48) fail('Community name must be 2–48 characters.', 400);
+  const cleanDesc = typeof description === 'string' ? description.trim().slice(0, 240) : '';
+  const cleanIcon = typeof icon === 'string' && icon.trim() ? icon.trim().slice(0, 8) : '🌟';
+
+  await locked('social:global', async () => {
+    const s = await getSocialState();
+    const me = req.user.username;
+    const nowIso = new Date(now()).toISOString();
+    const commId = `comm_${randomBytes(6).toString('hex')}`;
+
+    const community = {
+      id: commId,
+      ownerId: me,
+      name: cleanName,
+      description: cleanDesc,
+      icon: cleanIcon,
+      allowMemberInvites: Boolean(allowMemberInvites),
+      createdAt: nowIso
+    };
+    s.communities.push(community);
+    s.communityMembers.push({
+      id: `cm_${commId}_${me}`,
+      communityId: commId,
+      userId: me,
+      role: 'owner',
+      joinedAt: nowIso
+    });
+
+    const invited = [];
+    const expIso = new Date(now() + INVITE_TTL_MS).toISOString();
+    for (const rawU of (Array.isArray(inviteUsernames) ? inviteUsernames : [])) {
+      const target = String(rawU || '').toLowerCase().trim();
+      if (!target || target === me || isBlockedBetween(s, me, target) || !areFriends(s, me, target)) continue;
+      if (invited.includes(target)) continue;
+      const inv = {
+        id: `ci_${randomBytes(8).toString('hex')}`,
+        communityId: commId,
+        inviterId: me,
+        inviteeId: target,
+        status: 'pending',
+        createdAt: nowIso,
+        respondedAt: null,
+        expiresAt: expIso
+      };
+      s.communityInvitations.push(inv);
+      pushNotification(s, {
+        userId: target,
+        type: 'community_invitation',
+        title: 'Community Invitation',
+        message: `${req.user.name} invited you to join "${cleanName}".`,
+        relatedEntityId: inv.id,
+        metadata: { communityId: commId, invitationId: inv.id }
+      }, now());
+      invited.push(target);
+    }
+
+    await saveSocialState(s);
+    res.json({ community: { ...community, myRole: 'owner', memberCount: 1 }, invited });
+  });
+}));
+
+app.get('/api/communities/:id', route(async (req, res) => {
+  const commId = String(req.params.id || '').trim();
+  await locked('social:global', async () => {
+    const s = await getSocialState();
+    const comm = s.communities.find(c => c.id === commId);
+    if (!comm) fail('Community not found.', 404);
+    const me = req.user.username;
+    const myMem = s.communityMembers.find(m => m.communityId === commId && m.userId === me);
+    if (!myMem) fail('Access denied. This community is private.', 403);
+
+    const { accountsMap, progressMap } = await listAccountsAndProgress();
+    const nowMs = now();
+
+    const members = s.communityMembers
+      .filter(m => m.communityId === commId && accountsMap[m.userId])
+      .map(m => ({
+        ...buildPublicProfileCard(accountsMap[m.userId], progressMap[m.userId], s.presence, nowMs),
+        role: m.role,
+        joinedAt: m.joinedAt
+      }))
+      .sort((a, b) => {
+        const rank = { owner: 0, admin: 1, member: 2 };
+        return (rank[a.role] ?? 3) - (rank[b.role] ?? 3) || b.xp - a.xp;
+      });
+
+    const pendingInvites = ['owner', 'admin'].includes(myMem.role)
+      ? s.communityInvitations
+          .filter(i => i.communityId === commId && i.status === 'pending')
+          .map(i => ({
+            ...i,
+            inviteeName: accountsMap[i.inviteeId]?.name || i.inviteeId
+          }))
+      : [];
+
+    res.json({
+      community: {
+        ...comm,
+        myRole: myMem.role,
+        memberCount: members.length,
+        members,
+        pendingInvites
+      }
+    });
+  });
+}));
+
+app.patch('/api/communities/:id', route(async (req, res) => {
+  const commId = String(req.params.id || '').trim();
+  const { name, description, icon, allowMemberInvites } = req.body || {};
+  await locked('social:global', async () => {
+    const s = await getSocialState();
+    const comm = s.communities.find(c => c.id === commId);
+    if (!comm) fail('Community not found.', 404);
+    if (comm.ownerId !== req.user.username) fail('Only the community owner can edit settings.', 403);
+
+    if (typeof name === 'string' && name.trim().length >= 2 && name.trim().length <= 48) {
+      comm.name = name.trim();
+    }
+    if (typeof description === 'string') {
+      comm.description = description.trim().slice(0, 240);
+    }
+    if (typeof icon === 'string' && icon.trim()) {
+      comm.icon = icon.trim().slice(0, 8);
+    }
+    if (typeof allowMemberInvites === 'boolean') {
+      comm.allowMemberInvites = allowMemberInvites;
+    }
+
+    await saveSocialState(s);
+    res.json({ community: comm });
+  });
+}));
+
+app.delete('/api/communities/:id', route(async (req, res) => {
+  const commId = String(req.params.id || '').trim();
+  await locked('social:global', async () => {
+    const s = await getSocialState();
+    const comm = s.communities.find(c => c.id === commId);
+    if (!comm) fail('Community not found.', 404);
+    if (comm.ownerId !== req.user.username) fail('Only the owner can delete this community.', 403);
+
+    const otherMembers = s.communityMembers.filter(m => m.communityId === commId && m.userId !== req.user.username);
+    for (const m of otherMembers) {
+      pushNotification(s, {
+        userId: m.userId,
+        type: 'community_update',
+        title: 'Community Closed',
+        message: `"${comm.name}" was deleted by its owner.`,
+        relatedEntityId: commId
+      }, now());
+    }
+    s.communities = s.communities.filter(c => c.id !== commId);
+    s.communityMembers = s.communityMembers.filter(m => m.communityId !== commId);
+    s.communityInvitations = s.communityInvitations.filter(i => i.communityId !== commId);
+    await saveSocialState(s);
+    if (supabase) {
+      try { await supabase.from('communities').delete().eq('id', commId); } catch { }
+    }
+    res.json({ ok: true });
+  });
+}));
+
+app.post('/api/communities/:id/invite', route(async (req, res) => {
+  const commId = String(req.params.id || '').trim();
+  const { usernames = [] } = req.body || {};
+  await locked('social:global', async () => {
+    const s = await getSocialState();
+    const comm = s.communities.find(c => c.id === commId);
+    if (!comm) fail('Community not found.', 404);
+    const me = req.user.username;
+    const myMem = s.communityMembers.find(m => m.communityId === commId && m.userId === me);
+    if (!myMem) fail('Access denied.', 403);
+    if (myMem.role === 'member' && !comm.allowMemberInvites) {
+      fail('Only community owners and admins can invite new members.', 403);
+    }
+
+    const { accountsMap } = await listAccountsAndProgress();
+    const nowIso = new Date(now()).toISOString();
+    const expIso = new Date(now() + INVITE_TTL_MS).toISOString();
+    const invited = [];
+
+    for (const rawU of (Array.isArray(usernames) ? usernames : [])) {
+      const target = String(rawU || '').toLowerCase().trim();
+      if (!target || target === me || !accountsMap[target]) continue;
+      if (isBlockedBetween(s, me, target)) continue;
+      if (!areFriends(s, me, target)) continue;
+      const alreadyMem = s.communityMembers.some(m => m.communityId === commId && m.userId === target);
+      const alreadyInv = s.communityInvitations.some(i => i.communityId === commId && i.inviteeId === target && i.status === 'pending');
+      if (alreadyMem || alreadyInv || invited.includes(target)) continue;
+
+      const inv = {
+        id: `ci_${randomBytes(8).toString('hex')}`,
+        communityId: commId,
+        inviterId: me,
+        inviteeId: target,
+        status: 'pending',
+        createdAt: nowIso,
+        respondedAt: null,
+        expiresAt: expIso
+      };
+      s.communityInvitations.push(inv);
+      pushNotification(s, {
+        userId: target,
+        type: 'community_invitation',
+        title: 'Community Invitation',
+        message: `${req.user.name} invited you to join "${comm.name}".`,
+        relatedEntityId: inv.id,
+        metadata: { communityId: commId, invitationId: inv.id }
+      }, now());
+      invited.push(target);
+    }
+
+    await saveSocialState(s);
+    res.json({ invited });
+  });
+}));
+
+app.post('/api/communities/invitations/:invId/respond', route(async (req, res) => {
+  const { invId } = req.params;
+  const { action } = req.body || {};
+  if (!['accept', 'decline'].includes(action)) fail('Invalid invitation action.', 400);
+
+  await locked('social:global', async () => {
+    const s = await getSocialState();
+    const inv = s.communityInvitations.find(i => i.id === invId);
+    if (!inv) fail('Community invitation not found.', 404);
+    const me = req.user.username;
+    if (inv.inviteeId !== me) fail('Unauthorized to respond to this invitation.', 403);
+    if (inv.status !== 'pending') fail(`This invitation is already ${inv.status}.`, 400);
+
+    const comm = s.communities.find(c => c.id === inv.communityId);
+    if (!comm) {
+      inv.status = 'expired';
+      await saveSocialState(s);
+      fail('This community no longer exists.', 404);
+    }
+
+    const nowIso = new Date(now()).toISOString();
+    inv.respondedAt = nowIso;
+    if (action === 'decline') {
+      inv.status = 'declined';
+    } else {
+      inv.status = 'accepted';
+      if (!s.communityMembers.some(m => m.communityId === comm.id && m.userId === me)) {
+        s.communityMembers.push({
+          id: `cm_${comm.id}_${me}`,
+          communityId: comm.id,
+          userId: me,
+          role: 'member',
+          joinedAt: nowIso
+        });
+      }
+      pushNotification(s, {
+        userId: inv.inviterId,
+        type: 'community_update',
+        title: 'New Community Member',
+        message: `${req.user.name} joined "${comm.name}"!`,
+        relatedEntityId: comm.id
+      }, now());
+    }
+
+    for (const n of s.notifications) {
+      if (n.userId === me && n.relatedEntityId === invId) n.isRead = true;
+    }
+    await saveSocialState(s);
+    res.json({ ok: true, status: inv.status, communityId: comm.id });
+  });
+}));
+
+app.patch('/api/communities/:id/members/:targetUsername', route(async (req, res) => {
+  const commId = String(req.params.id || '').trim();
+  const target = String(req.params.targetUsername || '').toLowerCase().trim();
+  const { action, role } = req.body || {};
+
+  await locked('social:global', async () => {
+    const s = await getSocialState();
+    const comm = s.communities.find(c => c.id === commId);
+    if (!comm) fail('Community not found.', 404);
+    if (comm.ownerId !== req.user.username) fail('Only the community owner can manage members.', 403);
+    if (target === comm.ownerId) fail('Owner membership cannot be modified here.', 400);
+
+    const mem = s.communityMembers.find(m => m.communityId === commId && m.userId === target);
+    if (!mem) fail('Member not found in community.', 404);
+
+    if (action === 'remove') {
+      s.communityMembers = s.communityMembers.filter(m => !(m.communityId === commId && m.userId === target));
+      pushNotification(s, {
+        userId: target,
+        type: 'community_update',
+        title: 'Community Update',
+        message: `You were removed from "${comm.name}".`,
+        relatedEntityId: commId
+      }, now());
+      await saveSocialState(s);
+      if (supabase) {
+        try { await supabase.from('community_members').delete().match({ community_id: commId, user_id: target }); } catch { }
+      }
+      return res.json({ ok: true, removed: target });
+    }
+
+    if (action === 'set_role' && ['admin', 'member'].includes(role)) {
+      mem.role = role;
+      pushNotification(s, {
+        userId: target,
+        type: 'community_update',
+        title: 'Community Role Updated',
+        message: `You are now ${role === 'admin' ? 'an Admin' : 'a Member'} in "${comm.name}".`,
+        relatedEntityId: commId
+      }, now());
+      await saveSocialState(s);
+      return res.json({ ok: true, role });
+    }
+
+    fail('Invalid member action.', 400);
+  });
+}));
+
+app.post('/api/communities/:id/leave', route(async (req, res) => {
+  const commId = String(req.params.id || '').trim();
+  const { transferToUsername } = req.body || {};
+
+  await locked('social:global', async () => {
+    const s = await getSocialState();
+    const comm = s.communities.find(c => c.id === commId);
+    if (!comm) fail('Community not found.', 404);
+    const me = req.user.username;
+    const myMem = s.communityMembers.find(m => m.communityId === commId && m.userId === me);
+    if (!myMem) fail('You are not a member of this community.', 404);
+
+    const otherMembers = s.communityMembers.filter(m => m.communityId === commId && m.userId !== me);
+
+    if (comm.ownerId === me) {
+      if (otherMembers.length === 0) {
+        s.communities = s.communities.filter(c => c.id !== commId);
+        s.communityMembers = s.communityMembers.filter(m => m.communityId !== commId);
+        s.communityInvitations = s.communityInvitations.filter(i => i.communityId !== commId);
+        await saveSocialState(s);
+        if (supabase) {
+          try { await supabase.from('communities').delete().eq('id', commId); } catch { }
+        }
+        return res.json({ ok: true, deleted: true });
+      }
+      const nextOwnerId = String(transferToUsername || '').toLowerCase().trim();
+      const nextOwnerMem = otherMembers.find(m => m.userId === nextOwnerId);
+      if (!nextOwnerMem) {
+        fail('Transfer ownership to another member before leaving this community.', 400);
+      }
+      comm.ownerId = nextOwnerId;
+      nextOwnerMem.role = 'owner';
+      pushNotification(s, {
+        userId: nextOwnerId,
+        type: 'community_update',
+        title: 'Community Ownership Transferred',
+        message: `You are now the owner of "${comm.name}".`,
+        relatedEntityId: commId
+      }, now());
+    }
+
+    s.communityMembers = s.communityMembers.filter(m => !(m.communityId === commId && m.userId === me));
+    await saveSocialState(s);
+    if (supabase) {
+      try { await supabase.from('community_members').delete().match({ community_id: commId, user_id: me }); } catch { }
+    }
+    res.json({ ok: true, transferredTo: comm.ownerId !== me ? comm.ownerId : null });
+  });
+}));
+
+// --- MULTIPLAYER GAME INVITATIONS & ACCEPT / DECLINE ---
+
+app.post('/api/games/:code/invite', route(async (req, res) => {
+  const code = normalizeCode(req.params.code);
+  const { mode = 'selected', usernames = [], communityId, communityIds = [] } = req.body || {};
+
+  await locked('game:' + code, async () => {
+    const g = await db.get('games', code);
+    if (!g) fail('Game room not found.', 404);
+    await tick(g);
+    if (!g.members[req.user.username]) fail('You must belong to this game room to invite friends.', 403);
+    if (!['waiting', 'countdown'].includes(g.status)) {
+      fail('Cannot send invitations after the match has started or finished.', 400);
+    }
+
+    await locked('social:global', async () => {
+      const s = await getSocialState();
+      const me = req.user.username;
+      const { accountsMap } = await listAccountsAndProgress();
+
+      const candidateSet = new Set();
+      if (mode === 'all_friends') {
+        for (const f of getFriendUsernames(s, me)) candidateSet.add(f);
+      } else if (mode === 'community') {
+        const ids = [...(Array.isArray(communityIds) ? communityIds : []), ...(communityId ? [communityId] : [])].filter(Boolean);
+        if (!ids.length) fail('Select at least one community.', 400);
+        for (const cId of ids) {
+          const isMember = s.communityMembers.some(m => m.communityId === cId && m.userId === me);
+          if (!isMember) fail('You can only invite communities you belong to.', 403);
+          for (const m of s.communityMembers.filter(cm => cm.communityId === cId)) {
+            candidateSet.add(m.userId);
+          }
+        }
+      } else {
+        for (const rawU of (Array.isArray(usernames) ? usernames : [])) {
+          const u = String(rawU || '').toLowerCase().trim();
+          if (u) candidateSet.add(u);
+        }
+      }
+
+      const nowIso = new Date(now()).toISOString();
+      const expIso = new Date(now() + GAME_INVITE_TTL_MS).toISOString();
+      const activePlayerCount = Object.values(g.members).filter(m => m.role !== 'spectator').length;
+
+      const invited = [];
+      let skippedCount = 0;
+
+      for (const target of candidateSet) {
+        if (target === me || !accountsMap[target]) {
+          if (target !== me) skippedCount++;
+          continue;
+        }
+        if (g.members[target] || isBlockedBetween(s, me, target)) {
+          skippedCount++;
+          continue;
+        }
+        if (mode === 'selected' && !areFriends(s, me, target)) {
+          skippedCount++;
+          continue;
+        }
+        const existingInv = s.gameInvitations.find(
+          gi => gi.gameId === code && gi.receiverId === target && ['pending', 'accepted'].includes(gi.status)
+        );
+        if (existingInv) {
+          skippedCount++;
+          continue;
+        }
+
+        // Reuse declined/expired row key if re-inviting or create fresh record
+        s.gameInvitations = s.gameInvitations.filter(gi => !(gi.gameId === code && gi.receiverId === target));
+        const gi = {
+          id: `gi_${randomBytes(8).toString('hex')}`,
+          gameId: code,
+          senderId: me,
+          receiverId: target,
+          status: 'pending',
+          createdAt: nowIso,
+          respondedAt: null,
+          expiresAt: expIso
+        };
+        s.gameInvitations.push(gi);
+        pushNotification(s, {
+          userId: target,
+          type: 'game_invitation',
+          title: 'GAME INVITATION!',
+          message: `${req.user.name} challenged you to ${g.topic} (${g.difficulty}).`,
+          relatedEntityId: gi.id,
+          metadata: {
+            inviteId: gi.id,
+            gameCode: code,
+            topic: g.topic,
+            difficulty: g.difficulty,
+            senderUsername: me,
+            senderName: req.user.name,
+            playerCount: activePlayerCount,
+            maxPlayers: MAX_ACTIVE_PLAYERS
+          }
+        }, now());
+        invited.push({
+          ...gi,
+          receiverName: accountsMap[target]?.name || target
+        });
+      }
+
+      await saveSocialState(s);
+      const roomInvites = s.gameInvitations
+        .filter(gi => gi.gameId === code)
+        .map(gi => ({
+          ...gi,
+          receiverName: accountsMap[gi.receiverId]?.name || gi.receiverId,
+          receiverAvatar: accountsMap[gi.receiverId]?.avatar || '🌱'
+        }));
+
+      res.json({ ok: true, invited, skippedCount, invites: roomInvites });
+    });
+  });
+}));
+
+app.get('/api/games/:code/invites', route(async (req, res) => {
+  const code = normalizeCode(req.params.code);
+  const g = await db.get('games', code);
+  if (!g || !g.members[req.user.username]) fail('Game room not found.', 404);
+
+  await locked('social:global', async () => {
+    const s = await getSocialState();
+    const { accountsMap } = await listAccountsAndProgress();
+    const invites = s.gameInvitations
+      .filter(gi => gi.gameId === code)
+      .map(gi => ({
+        ...gi,
+        receiverName: accountsMap[gi.receiverId]?.name || gi.receiverId,
+        receiverAvatar: accountsMap[gi.receiverId]?.avatar || '🌱'
+      }));
+    res.json({ invites });
+  });
+}));
+
+app.post('/api/games/invites/:invId/respond', route(async (req, res) => {
+  const { invId } = req.params;
+  const { action } = req.body || {};
+  if (!['accept', 'decline'].includes(action)) fail('Invalid game invitation action.', 400);
+
+  let inviteSnapshot = null;
+  await locked('social:global', async () => {
+    const s = await getSocialState();
+    const gi = s.gameInvitations.find(x => x.id === invId);
+    if (!gi) fail('Game invitation not found.', 404);
+    if (gi.receiverId !== req.user.username) fail('You are not authorized to respond to this invitation.', 403);
+    if (gi.status !== 'pending') fail(`This game invitation is already ${gi.status}.`, 400);
+
+    const nowIso = new Date(now()).toISOString();
+    if (action === 'decline') {
+      gi.status = 'declined';
+      gi.respondedAt = nowIso;
+      for (const n of s.notifications) {
+        if (n.userId === req.user.username && n.relatedEntityId === invId) n.isRead = true;
+      }
+      await saveSocialState(s);
+      inviteSnapshot = { declined: true, invite: gi };
+      return;
+    }
+    inviteSnapshot = { declined: false, invite: { ...gi } };
+  });
+
+  if (inviteSnapshot.declined) {
+    return res.json({ ok: true, status: 'declined' });
+  }
+
+  const code = inviteSnapshot.invite.gameId;
+  await locked('game:' + code, async () => {
+    const g = await db.get('games', code);
+    if (!g) {
+      await locked('social:global', async () => {
+        const s = await getSocialState();
+        const gi = s.gameInvitations.find(x => x.id === invId);
+        if (gi) gi.status = 'expired';
+        await saveSocialState(s);
+      });
+      fail('That game room no longer exists.', 404);
+    }
+    await tick(g);
+    if (g.status === 'finished') {
+      await locked('social:global', async () => {
+        const s = await getSocialState();
+        const gi = s.gameInvitations.find(x => x.id === invId);
+        if (gi) gi.status = 'expired';
+        await saveSocialState(s);
+      });
+      fail('That game has already finished.', 400);
+    }
+    if (g.status === 'playing') {
+      fail('That match has already started.', 400);
+    }
+    if (g.members[req.user.username]) {
+      await locked('social:global', async () => {
+        const s = await getSocialState();
+        const gi = s.gameInvitations.find(x => x.id === invId);
+        if (gi) {
+          gi.status = 'accepted';
+          gi.respondedAt = new Date(now()).toISOString();
+        }
+        await saveSocialState(s);
+      });
+      fail('You are already participating in this game.', 409);
+    }
+    const activeCount = Object.values(g.members).filter(m => m.role !== 'spectator').length;
+    if (activeCount >= MAX_ACTIVE_PLAYERS) {
+      fail(`This room is full (${MAX_ACTIVE_PLAYERS} active players).`, 400);
+    }
+
+    const newMem = member(req.user, 'player');
+    if (g.isCustomTopic) {
+      let guestOrder = generateShuffledOrder(g.questions.length);
+      const existingHost = Object.values(g.members).find(m => m.role !== 'spectator' && m.questionOrder);
+      if (g.questions.length > 1 && existingHost?.questionOrder && guestOrder[0] === existingHost.questionOrder[0]) {
+        [guestOrder[0], guestOrder[1]] = [guestOrder[1], guestOrder[0]];
+      }
+      newMem.questionOrder = guestOrder;
+    }
+    g.members[req.user.username] = newMem;
+    await db.set('games', code, g);
+
+    await locked('social:global', async () => {
+      const s = await getSocialState();
+      const gi = s.gameInvitations.find(x => x.id === invId);
+      if (gi) {
+        gi.status = 'accepted';
+        gi.respondedAt = new Date(now()).toISOString();
+      }
+      for (const n of s.notifications) {
+        if (n.userId === req.user.username && n.relatedEntityId === invId) n.isRead = true;
+      }
+      pushNotification(s, {
+        userId: inviteSnapshot.invite.senderId,
+        type: 'game_invitation',
+        title: 'Challenge Accepted!',
+        message: `${req.user.name} accepted your invitation to join Room ${code}.`,
+        relatedEntityId: code
+      }, now());
+      await saveSocialState(s);
+    });
+
+    res.json({ ok: true, status: 'accepted', game: view(g, req.user) });
+  });
+}));
+
+app.post('/api/notifications/read', route(async (req, res) => {
+  const { ids } = req.body || {};
+  await locked('social:global', async () => {
+    const s = await getSocialState();
+    const me = req.user.username;
+    for (const n of s.notifications) {
+      if (n.userId !== me) continue;
+      if (ids === 'all' || !ids || (Array.isArray(ids) && ids.includes(n.id))) {
+        n.isRead = true;
+      }
+    }
+    await saveSocialState(s);
+    res.json({ ok: true });
+  });
+}));
+
 app.use('/api', (req, res) => res.status(404).json({ error: 'API endpoint not found.' }));
 app.use((err, req, res, next) => {
   console.error(err.message);
