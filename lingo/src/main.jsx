@@ -57,6 +57,7 @@ import {
 } from './services/deviceNotifications.js';
 
 const pages = ['home', 'learn', 'friends', 'practice', 'games', 'profile', 'reminders'];
+const navPages = ['home', 'learn', 'friends', 'practice', 'games', 'profile'];
 
 function getInitialWebPage() {
   if (isNativeUI() || typeof window === 'undefined') return 'home';
@@ -636,9 +637,10 @@ function App() {
       );
       if (isEditable || modal || authModal || activeLessonPage || notifOpen || (page === 'games' && game)) return;
       if (document.querySelector('.modal, dialog[open], .social-modal-overlay, .confirm-leave-overlay, .lesson-preview-modal')) return;
-      const i = pages.indexOf(page);
-      if (e.key === 'ArrowRight') navigate(pages[(i + 1) % pages.length]);
-      if (e.key === 'ArrowLeft') navigate(pages[(i + pages.length - 1) % pages.length]);
+      const baseIdx = navPages.indexOf(page === 'reminders' ? 'profile' : page);
+      const i = baseIdx >= 0 ? baseIdx : 0;
+      if (e.key === 'ArrowRight') navigate(navPages[(i + 1) % navPages.length]);
+      if (e.key === 'ArrowLeft') navigate(navPages[(i + navPages.length - 1) % navPages.length]);
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -1314,18 +1316,20 @@ function App() {
         <main
           className={`app-main ${page === 'home' ? 'home-main' : page === 'learn' ? 'learn-main' : page === 'profile' ? 'profile-main' : 'interior-main'}`}
           onTouchStart={e => {
-            if (page === 'practice' || e.target.closest('.practice-nav-tabs, .practice-page, .horizontal-scroll, [data-no-swipe]')) {
+            if (page === 'practice' || page === 'reminders' || e.target.closest('.practice-nav-tabs, .practice-page, .horizontal-scroll, [data-no-swipe]')) {
               touch.current = null;
               return;
             }
             touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
           }}
           onTouchEnd={e => {
-            if (!touch.current || modal || page === 'practice') return;
+            if (!touch.current || modal || page === 'practice' || page === 'reminders') return;
             const dx = e.changedTouches[0].clientX - touch.current.x, dy = e.changedTouches[0].clientY - touch.current.y;
             if (Math.abs(dx) > 110 && Math.abs(dx) > Math.abs(dy) * 2.5) {
-              const i = pages.indexOf(page);
-              navigate(pages[(i + (dx < 0 ? 1 : pages.length - 1)) % pages.length]);
+              const i = navPages.indexOf(page);
+              if (i >= 0) {
+                navigate(navPages[(i + (dx < 0 ? 1 : navPages.length - 1)) % navPages.length]);
+              }
             }
             touch.current = null;
           }}
