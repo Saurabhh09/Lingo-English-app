@@ -1361,7 +1361,7 @@ function App() {
               {/* Download App Icon (Web Home Header Only) */}
               {!isNative && page === 'home' && (
                 <a
-                  href="/lingo.apk?v=20261126-2"
+                  href="/lingo.apk?v=20261126-3"
                   download="lingo.apk"
                   className="topbar-download-btn"
                   title="Download Android App (APK)"
