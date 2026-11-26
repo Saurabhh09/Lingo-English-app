@@ -30,6 +30,7 @@ import { SoloGameRoom } from './components/Games/SoloGameRoom.jsx';
 import { FriendsPage } from './components/Social/FriendsPage.jsx';
 import { NotificationsModal } from './components/Social/SocialModals.jsx';
 import { RemindersSettingsPage } from './components/Social/RemindersSettingsPage.jsx';
+import { WebSidebar } from './components/Web/WebSidebar.jsx';
 import { BadgeUnlockModal } from './components/Achievements/BadgeUnlockModal.jsx';
 import { AchievementsSection } from './components/Achievements/AchievementsSection.jsx';
 import { BadgeArtwork } from './components/Achievements/BadgeArtwork.jsx';
@@ -56,6 +57,12 @@ import {
 } from './services/deviceNotifications.js';
 
 const pages = ['home', 'learn', 'friends', 'practice', 'games', 'profile', 'reminders'];
+
+function getInitialWebPage() {
+  if (isNativeUI() || typeof window === 'undefined') return 'home';
+  const raw = window.location.hash.replace(/^#\/?/, '').trim().toLowerCase();
+  return pages.includes(raw) ? raw : 'home';
+}
 const words = [
   { word: 'Serendipity', phonetic: '/ˌser.ənˈdɪp.ə.ti/', type: 'noun', meaning: 'The happy chance of finding something wonderful when you weren’t looking for it.', example: 'Finding this little café was pure serendipity.' },
   { word: 'Resilient', phonetic: '/rɪˈzɪl.i.ənt/', type: 'adjective', meaning: 'Able to recover and feel strong again after a difficulty.', example: 'She stayed resilient through every challenge.' },
@@ -68,7 +75,7 @@ const words = [
 ];
 
 function App() {
-  const [page, setPage] = useState('home');
+  const [page, setPage] = useState(getInitialWebPage);
   const [direction, setDirection] = useState(1);
   const [user, setUser] = useState(null);
   const [progress, setProgress] = useState(null);
@@ -568,7 +575,34 @@ function App() {
     setDirection(pages.indexOf(next) > pages.indexOf(page) ? 1 : -1);
     setPage(next);
     setSearch('');
+    if (!isNative && typeof window !== 'undefined') {
+      const targetHash = '#' + next;
+      if (window.location.hash !== targetHash) {
+        try {
+          window.history.pushState({ page: next }, '', targetHash);
+        } catch {
+          window.location.hash = targetHash;
+        }
+      }
+    }
   }
+
+  useEffect(() => {
+    if (isNative || typeof window === 'undefined') return;
+    const syncFromHash = () => {
+      const raw = window.location.hash.replace(/^#\/?/, '').trim().toLowerCase();
+      if (pages.includes(raw) && raw !== page) {
+        setDirection(pages.indexOf(raw) > pages.indexOf(page) ? 1 : -1);
+        setPage(raw);
+      }
+    };
+    window.addEventListener('hashchange', syncFromHash);
+    window.addEventListener('popstate', syncFromHash);
+    return () => {
+      window.removeEventListener('hashchange', syncFromHash);
+      window.removeEventListener('popstate', syncFromHash);
+    };
+  }, [isNative, page]);
 
   useEffect(() => {
     const handler = e => {
@@ -1065,7 +1099,7 @@ function App() {
   // LOGGED IN APP SHELL
   if (activeLessonPage) {
     return (
-      <div className="app-shell">
+      <div className={isNative ? 'app-shell' : 'app-shell web-focus-mode'}>
         <div className="workspace lesson-page-workspace">
           <div className="lesson-page-screen">
             <div className="lesson-page-topbar">
@@ -1184,16 +1218,36 @@ function App() {
     );
   }
 
+  const isWebFocusMode = !isNative && Boolean(page === 'games' && game);
+
   return (
-    <div className="app-shell">
+    <div className={isWebFocusMode ? 'app-shell web-focus-mode' : 'app-shell'}>
+      {!isNative && (
+        <WebSidebar
+          page={page}
+          navigate={navigate}
+          user={user}
+          progress={progress}
+          selectedAvatar={selectedAvatar}
+          avatarColor={avatarColor}
+          socialUnreadCount={socialUnreadCount}
+          onOpenLesson={() => openLesson(activeLesson)}
+        />
+      )}
       <div className="workspace">
-        {/* Topbar: Scoped exclusively to the Home screen */}
-        {page === 'home' && (
+        {/* Topbar: Scoped to Home on native mobile, persistent across all tabs on web */}
+        {(page === 'home' || !isNative) && (
           <header className="topbar">
             <div className="mobile-brand-mark">
               <Mascot pose="walk" size={32} className="topbar-mascot" />
               <b>Lingo</b>
             </div>
+            {!isNative && (
+              <div className="web-topbar-title">
+                <span className="web-topbar-eyebrow">{headings[page]?.[0] || 'Lingo'}</span>
+                <span className="web-topbar-heading">{headings[page]?.[1] || 'Dashboard'}</span>
+              </div>
+            )}
             <div className="topbar-actions">
               {/* Streak Indicator with Flame */}
               <button className="streak-pill" onClick={() => setModal({ type: 'progress' })} aria-label="View learning streak">
@@ -1853,6 +1907,7 @@ function App() {
               }}
               className={`mobile-nav-btn ${isActive ? 'active' : ''}`}
               aria-label={label}
+              data-testid={`nav-${key}`}
             >
               <Icon size={19} />
               <span>{label}</span>
