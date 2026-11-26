@@ -12,6 +12,13 @@ const rootDir = path.resolve(lingoDir, '..');
 const isWin = process.platform === 'win32';
 const gradlewCmd = isWin ? 'gradlew.bat' : './gradlew';
 
+// Prevent bundling a stale copy of lingo.apk inside the Android APK assets folder
+const bundledNestedApk = path.join(androidDir, 'app', 'src', 'main', 'assets', 'public', 'lingo.apk');
+if (fs.existsSync(bundledNestedApk)) {
+  fs.rmSync(bundledNestedApk, { force: true });
+  console.log('[APK BUILD] Removed nested lingo.apk from Android public assets before packaging.');
+}
+
 console.log('--- [APK BUILD] Starting Gradle assembleDebug ---');
 const gradleResult = spawnSync(gradlewCmd, ['assembleDebug'], {
   cwd: androidDir,
