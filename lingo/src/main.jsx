@@ -1292,6 +1292,18 @@ function App() {
                 <Gem size={15} />
                 <b>{progress.gems || 0}</b>
               </div>
+              {/* Download App Icon (Web Home Header Only) */}
+              {!isNative && page === 'home' && (
+                <a
+                  href="/lingo.apk"
+                  download="lingo.apk"
+                  className="topbar-download-btn"
+                  title="Download Android App (APK)"
+                  aria-label="Download Android app"
+                >
+                  <Download size={16} />
+                </a>
+              )}
               {/* Notifications Bell */}
               <button
                 type="button"
