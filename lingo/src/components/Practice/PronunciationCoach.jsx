@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { MicrophoneRecorder } from './MicrophoneRecorder.jsx';
 import { Volume2, CheckCircle2, RotateCcw, ArrowRight, Sparkles, Loader2, Info } from 'lucide-react';
+import { speakEnglishText } from '../../services/speechAudio.js';
 
 export function PronunciationCoach({ items = [], api, updateProgress, userCompleted = [] }) {
   const [selectedId, setSelectedId] = useState(items[0]?.id || 'pron_hello');
@@ -19,24 +20,10 @@ export function PronunciationCoach({ items = [], api, updateProgress, userComple
   }
 
   function playReferenceAudio() {
-    if (currentItem.referenceAudioUrl) {
-      const a = new Audio(currentItem.referenceAudioUrl);
-      a.play().catch(() => {
-        // Fallback to Web Speech API
-        speakFallback(currentItem.targetPhrase);
-      });
-    } else {
-      speakFallback(currentItem.targetPhrase);
-    }
-  }
-
-  function speakFallback(text) {
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const s = new SpeechSynthesisUtterance(text);
-    s.lang = 'en-US';
-    s.rate = 0.8;
-    window.speechSynthesis.speak(s);
+    speakEnglishText(currentItem.targetPhrase, {
+      audioUrl: currentItem.referenceAudioUrl || null,
+      rate: 0.8
+    });
   }
 
   async function handleEvaluate() {

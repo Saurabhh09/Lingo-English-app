@@ -1,6 +1,5 @@
 import React, { useRef, useState } from 'react';
 import {
-  Clock,
   Copy,
   Check,
   Users,
@@ -10,6 +9,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { Mascot } from '../../Art.jsx';
+import { GameClockTimer } from './GameClockTimer.jsx';
 
 /**
  * SpectatorDashboard: Live Leaderboard & Podium view for Spectator Hosts / Observers.
@@ -19,21 +19,11 @@ import { Mascot } from '../../Art.jsx';
 export function SpectatorDashboard({
   game,
   user,
-  tick,
   action,
   copyCode,
 }) {
   const [copied, setCopied] = useState(false);
   const exitDialogRef = useRef(null);
-
-  const clockOffset = (game.serverTime && game.clientReceivedAt)
-    ? (game.serverTime - game.clientReceivedAt)
-    : 0;
-  const currentServerTime = (tick || Date.now()) + clockOffset;
-  const totalRemainingSeconds = game.endsAt
-    ? Math.max(0, Math.ceil((game.endsAt - currentServerTime) / 1000))
-    : 0;
-  const formattedTime = `${String(Math.floor(totalRemainingSeconds / 60)).padStart(2, '0')}:${String(totalRemainingSeconds % 60).padStart(2, '0')}`;
 
   // Sort active players live by score descending, then accuracy
   const activeSorted = [...(game.members || [])]
@@ -92,10 +82,11 @@ export function SpectatorDashboard({
           <span>LIVE LEADERBOARD</span>
         </span>
 
-        <span className={`solo-clock-pill quiz-timer ${totalRemainingSeconds <= 30 ? 'urgent' : ''}`}>
-          <Clock size={14} />
-          <span>{formattedTime}</span>
-        </span>
+        <GameClockTimer
+          endsAt={game.endsAt}
+          serverTime={game.serverTime}
+          clientReceivedAt={game.clientReceivedAt}
+        />
       </header>
 
       {/* Match Title & Copyable Room Code */}

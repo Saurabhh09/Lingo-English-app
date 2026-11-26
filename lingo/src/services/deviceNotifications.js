@@ -13,6 +13,7 @@ const WEB_DAILY_SENT_KEY = 'lingo-web-daily-reminder-date';
 
 const JOURNEY_OS_ID = 9001;
 const MOTIVATION_OS_ID = 9002;
+const ANDROID_SMALL_ICON = 'ic_stat_lingo';
 
 export const DEFAULT_CATEGORY_PREFS = {
   gameInvites: true,
@@ -33,8 +34,9 @@ const DEFAULT_PREFS = {
   categories: { ...DEFAULT_CATEGORY_PREFS }
 };
 
-let channelsReady = false;
+let channelsPromise = null;
 let listenerAttached = false;
+let nativePluginPromise = null;
 
 export function getNotificationPrefs() {
   try {
@@ -102,7 +104,7 @@ function getDeliveredIdSet() {
 
 function markDeliveredIds(ids) {
   try {
-    const arr = [...ids].slice(-200);
+    const arr = [...ids].slice(-250);
     localStorage.setItem(DELIVERED_IDS_KEY, JSON.stringify(arr));
   } catch { }
 }
@@ -119,11 +121,53 @@ function hashIdToInt(str) {
 
 async function getNativePlugin() {
   if (!isNativePlatform()) return null;
+  if (!nativePluginPromise) {
+    nativePluginPromise = import('@capacitor/local-notifications')
+      .then(mod => mod?.LocalNotifications || null)
+      .catch(() => null);
+  }
+  return nativePluginPromise;
+}
+
+async function ensureChannels(native) {
+  if (!native) return;
+  if (!channelsPromise) {
+    channelsPromise = Promise.all([
+      native.createChannel({
+        id: 'lingo-social',
+        name: 'Friends, Challenges & Achievements',
+        description: 'Game invitations, accepted/sent challenges, friend requests, and badges',
+        importance: 5,
+        visibility: 1,
+        vibration: true
+      }),
+      native.createChannel({
+        id: 'lingo-reminders',
+        name: 'Daily Learning Reminders',
+        description: 'Short personalized journey and daily motivation alerts',
+        importance: 4,
+        visibility: 1,
+        vibration: true
+      })
+    ]).catch(() => {
+      channelsPromise = null;
+    });
+  }
+  return channelsPromise;
+}
+
+async function hasNativeGrantOrRequest(native, { allowRequest = false } = {}) {
+  if (!native) return false;
   try {
-    const mod = await import('@capacitor/local-notifications');
-    return mod?.LocalNotifications || null;
+    let perm = await native.checkPermissions();
+    if (perm?.display === 'granted') return true;
+    if (allowRequest && perm?.display !== 'denied') {
+      perm = await native.requestPermissions();
+      return perm?.display === 'granted';
+    }
+    return false;
   } catch {
-    return null;
+    return false;
   }
 }
 
@@ -165,36 +209,13 @@ export async function requestDeviceNotificationPermission() {
   return false;
 }
 
-async function ensureChannels(native) {
-  if (!native || channelsReady) return;
-  try {
-    await native.createChannel({
-      id: 'lingo-social',
-      name: 'Friends, Challenges & Achievements',
-      description: 'Game invitations, accepted/sent challenges, friend requests, and badges',
-      importance: 5,
-      visibility: 1,
-      vibration: true
-    });
-    await native.createChannel({
-      id: 'lingo-reminders',
-      name: 'Daily Learning Reminders',
-      description: 'Short personalized journey and daily motivation alerts',
-      importance: 4,
-      visibility: 1,
-      vibration: true
-    });
-    channelsReady = true;
-  } catch { }
-}
-
 export async function ensureDeviceNotificationSetup({ onAction } = {}) {
   const prefs = getNotificationPrefs();
   const native = await getNativePlugin();
   if (native) {
     try {
       let perm = await native.checkPermissions();
-      if (prefs.enabled && perm?.display === 'prompt') {
+      if (prefs.enabled && (perm?.display === 'prompt' || perm?.display === 'prompt-with-rationale')) {
         perm = await native.requestPermissions();
       }
       await ensureChannels(native);
@@ -217,19 +238,17 @@ export async function dispatchDeviceNotification({ uniqueKey, title, body, chann
   const prefs = getNotificationPrefs();
   if (!isNotificationCategoryEnabled(prefs, category)) return false;
 
-  if (uniqueKey) {
-    const seen = getDeliveredIdSet();
-    if (seen.has(uniqueKey)) return false;
-    seen.add(uniqueKey);
-    markDeliveredIds(seen);
-  }
+  const seen = getDeliveredIdSet();
+  if (uniqueKey && seen.has(uniqueKey)) return false;
 
   const native = await getNativePlugin();
   if (native) {
     try {
-      const perm = await native.checkPermissions();
-      if (perm?.display !== 'granted') return false;
+      const granted = await hasNativeGrantOrRequest(native, { allowRequest: false });
+      if (!granted) return false;
       await ensureChannels(native);
+      // Omit schedule so Capacitor's LocalNotificationManager calls notificationManager.notify()
+      // synchronously with zero AlarmManager delay or Android 14 exact-alarm blocking.
       await native.schedule({
         notifications: [
           {
@@ -237,12 +256,17 @@ export async function dispatchDeviceNotification({ uniqueKey, title, body, chann
             title,
             body,
             channelId: channel,
-            smallIcon: 'ic_launcher',
-            extra,
-            schedule: { at: new Date(Date.now() + 250) }
+            smallIcon: ANDROID_SMALL_ICON,
+            iconColor: '#58cc02',
+            autoCancel: true,
+            extra
           }
         ]
       });
+      if (uniqueKey) {
+        seen.add(uniqueKey);
+        markDeliveredIds(seen);
+      }
       return true;
     } catch {
       return false;
@@ -252,6 +276,10 @@ export async function dispatchDeviceNotification({ uniqueKey, title, body, chann
   if (typeof window !== 'undefined' && 'Notification' in window && window.Notification.permission === 'granted') {
     try {
       new window.Notification(title, { body, tag: uniqueKey || undefined });
+      if (uniqueKey) {
+        seen.add(uniqueKey);
+        markDeliveredIds(seen);
+      }
       return true;
     } catch {
       return false;
@@ -266,34 +294,77 @@ export async function deliverAppNotificationsToDevice(notifications = [], myUser
   if (!prefs.enabled) return 0;
 
   const seen = getDeliveredIdSet();
-  let seeded = false;
+  let seenChanged = false;
   for (const n of notifications) {
     if (n.isRead && n.id) {
       const k = `app:${myUsername}:${n.id}`;
       if (!seen.has(k)) {
         seen.add(k);
-        seeded = true;
+        seenChanged = true;
       }
     }
   }
-  if (seeded) markDeliveredIds(seen);
 
-  let dispatched = 0;
+  const pendingItems = [];
   const unread = notifications.filter(n => !n.isRead).slice(0, 8);
   for (const n of unread) {
     const key = `app:${myUsername}:${n.id}`;
     if (seen.has(key)) continue;
     const category = mapAppNotifCategory(n);
-    const sent = await dispatchDeviceNotification({
-      uniqueKey: key,
-      title: n.title || 'Lingo Update',
-      body: n.message || '',
-      channel: 'lingo-social',
-      category,
-      extra: { type: n.type, relatedEntityId: n.relatedEntityId, route: 'friends' }
-    });
-    if (sent) dispatched++;
+    if (!isNotificationCategoryEnabled(prefs, category)) continue;
+    pendingItems.push({ key, notif: n, category });
   }
+
+  if (pendingItems.length === 0) {
+    if (seenChanged) markDeliveredIds(seen);
+    return 0;
+  }
+
+  const native = await getNativePlugin();
+  if (native) {
+    const granted = await hasNativeGrantOrRequest(native, { allowRequest: false });
+    if (!granted) {
+      if (seenChanged) markDeliveredIds(seen);
+      return 0;
+    }
+    try {
+      await ensureChannels(native);
+      await native.schedule({
+        notifications: pendingItems.map(({ key, notif }) => ({
+          id: hashIdToInt(key),
+          title: notif.title || 'Lingo Update',
+          body: notif.message || '',
+          channelId: 'lingo-social',
+          smallIcon: ANDROID_SMALL_ICON,
+          iconColor: '#58cc02',
+          autoCancel: true,
+          extra: {
+            type: notif.type,
+            relatedEntityId: notif.relatedEntityId,
+            route: notif.type === 'game_invitation' ? 'games' : 'friends'
+          }
+        }))
+      });
+      for (const { key } of pendingItems) seen.add(key);
+      markDeliveredIds(seen);
+      return pendingItems.length;
+    } catch {
+      if (seenChanged) markDeliveredIds(seen);
+      return 0;
+    }
+  }
+
+  let dispatched = 0;
+  if (typeof window !== 'undefined' && 'Notification' in window && window.Notification.permission === 'granted') {
+    for (const { key, notif } of pendingItems) {
+      try {
+        new window.Notification(notif.title || 'Lingo Update', { body: notif.message || '', tag: key });
+        seen.add(key);
+        dispatched++;
+      } catch { }
+    }
+  }
+  if (seenChanged || dispatched > 0) markDeliveredIds(seen);
   return dispatched;
 }
 
@@ -324,6 +395,34 @@ export function notifyChallengeAcceptedOnDevice({ senderName = 'Friend', topic =
   });
 }
 
+export function notifyBadgeUnlockedOnDevice(badge) {
+  if (!badge?.id) return Promise.resolve(false);
+  return dispatchDeviceNotification({
+    uniqueKey: `badge:${badge.id}`,
+    title: `Badge Unlocked: ${badge.name || 'Achievement'}`,
+    body: badge.description || 'Tap to view your new badge in Lingo!',
+    channel: 'lingo-social',
+    category: 'achievements',
+    extra: { route: 'profile', badgeId: badge.id }
+  });
+}
+
+export function notifyRewardUnlockedOnDevice(entry) {
+  const rw = entry?.reward;
+  if (!rw?.id) return Promise.resolve(false);
+  const bits = [];
+  if (entry?.xpAdded || rw.xpAmount) bits.push(`+${entry?.xpAdded || rw.xpAmount} XP`);
+  if (entry?.gemsAdded || rw.gemsAmount) bits.push(`+${entry?.gemsAdded || rw.gemsAmount} Gems`);
+  return dispatchDeviceNotification({
+    uniqueKey: `reward:${rw.id}`,
+    title: `Reward Claimed: ${rw.name || 'Treasure Chest'}`,
+    body: bits.length ? `Earned ${bits.join(' & ')}!` : (rw.description || 'Your Lingo reward is unlocked!'),
+    channel: 'lingo-social',
+    category: 'achievements',
+    extra: { route: 'profile', rewardId: rw.id }
+  });
+}
+
 export async function syncDailyDeviceReminders({ user, progress }) {
   if (!user || !progress) return false;
   const prefs = getNotificationPrefs();
@@ -337,8 +436,8 @@ export async function syncDailyDeviceReminders({ user, progress }) {
       }).catch(() => { });
 
       if (!prefs.enabled) return false;
-      const perm = await native.checkPermissions();
-      if (perm?.display !== 'granted') return false;
+      const granted = await hasNativeGrantOrRequest(native, { allowRequest: false });
+      if (!granted) return false;
       await ensureChannels(native);
 
       const toSchedule = [];
@@ -348,6 +447,9 @@ export async function syncDailyDeviceReminders({ user, progress }) {
           title: reminders.journey.title,
           body: reminders.journey.body,
           channelId: 'lingo-reminders',
+          smallIcon: ANDROID_SMALL_ICON,
+          iconColor: '#58cc02',
+          autoCancel: true,
           extra: { route: 'learn', type: 'daily_journey', lessonId: reminders.journey.nextLessonId },
           schedule: {
             on: { hour: Number(prefs.journeyHour ?? 9), minute: Number(prefs.journeyMinute ?? 0) },
@@ -362,6 +464,9 @@ export async function syncDailyDeviceReminders({ user, progress }) {
           title: reminders.motivation.title,
           body: reminders.motivation.body,
           channelId: 'lingo-reminders',
+          smallIcon: ANDROID_SMALL_ICON,
+          iconColor: '#58cc02',
+          autoCancel: true,
           extra: { route: reminders.motivation.targetPage || 'learn', type: 'daily_motivation' },
           schedule: {
             on: { hour: Number(prefs.motivationHour ?? 19), minute: Number(prefs.motivationMinute ?? 30) },
