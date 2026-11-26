@@ -96,3 +96,5 @@
 [1126/205732.694:WARNING:net\dns\dns_config_service_win.cc:607] Failed to read DnsConfig.
 [1126/205737.703:WARNING:net\dns\dns_config_service_win.cc:607] Failed to read DnsConfig.
 [1126/205747.712:WARNING:net\dns\dns_config_service_win.cc:607] Failed to read DnsConfig.
+[1126/225443.956:WARNING:net\dns\dns_config_service_win.cc:607] Failed to read DnsConfig.
+[1126/225449.016:WARNING:net\dns\dns_config_service_win.cc:607] Failed to read DnsConfig.
