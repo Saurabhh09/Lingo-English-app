@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Copy, Check, BarChart2, Clock, UserPlus, ChevronRight, Users, Plus, Play, Loader2, Hourglass } from 'lucide-react';
+import { ChallengeInvitePanel } from '../Social/GameInvitePanel.jsx';
 
 /**
  * WaitingLobby: Redesigned Friends Mode Room Lobby matching the clean Lingo reference:
@@ -12,6 +13,10 @@ export function WaitingLobby({
   busy,
   action,
   copyCode,
+  api,
+  notify,
+  socialOverview,
+  refreshSocial,
 }) {
   const [copied, setCopied] = useState(false);
   const [shareSuccess, setShareSuccess] = useState(false);
@@ -130,6 +135,16 @@ export function WaitingLobby({
         <span className="friends-invite-label">{shareSuccess ? 'Invite Sent!' : 'Invite Friends'}</span>
         <ChevronRight size={19} className="friends-invite-arrow" />
       </button>
+
+      {host && api && (
+        <ChallengeInvitePanel
+          game={game}
+          api={api}
+          notify={notify}
+          socialOverview={socialOverview}
+          refreshSocial={refreshSocial}
+        />
+      )}
 
       {/* 4. Players Card (Host + Joined Friends + Waiting Circles) */}
       <section className="friends-players-card">
