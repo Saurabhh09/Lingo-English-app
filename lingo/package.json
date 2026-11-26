@@ -14,6 +14,7 @@
     "cap:open": "node ./node_modules/@capacitor/cli/bin/capacitor open android",
     "start": "NODE_ENV=production node server.mjs",
     "test:e2e": "node tests/e2e.mjs",
+    "test:matrix": "playwright test",
     "test:api": "node tests/api.mjs",
     "test:curriculum": "node tests/curriculum.mjs",
     "test:phase10": "node tests/phase10-lesson-engine.mjs",
@@ -33,6 +34,7 @@
     "@capacitor/android": "^7.6.10",
     "@capacitor/cli": "^7.6.10",
     "@capacitor/core": "^7.6.10",
+    "@capacitor/local-notifications": "^7.0.7",
     "@capacitor/preferences": "^7.0.4",
     "@capacitor/splash-screen": "^7.0.5",
     "@capacitor/status-bar": "^7.0.6",
@@ -50,6 +52,7 @@
     "@playwright/test": "^1.64.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "rollup-plugin-visualizer": "^7.3.0",
     "typescript": "^7.0.2"
   }
 }

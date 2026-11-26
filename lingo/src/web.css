@@ -1,0 +1,705 @@
+/* ==========================================================================
+   LINGO WEB RESPONSIVE STYLESHEET
+   Strictly scoped under html[data-platform="web"] so Capacitor Android stays untouched.
+   ========================================================================== */
+
+html[data-platform="web"] {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  scrollbar-gutter: stable;
+}
+
+html[data-platform="web"] body {
+  overflow-x: clip;
+}
+
+html[data-platform="web"] #root,
+html[data-platform="web"] .app-shell {
+  width: 100%;
+  max-width: 100%;
+  min-height: 100dvh;
+  overflow-x: clip;
+}
+
+/* Prevent .demo-signup flex sibling from splitting .workspace width horizontally */
+html[data-platform="web"] .app-shell {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+html[data-platform="web"] .workspace {
+  margin: 0 auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 100dvh;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: clip;
+  padding-bottom: 0 !important;
+}
+
+/* Clean Topbar without overflow/clipping on 360px+ web viewports */
+html[data-platform="web"] .topbar {
+  padding: calc(10px + var(--safe-top)) 16px 10px !important;
+  min-height: 60px;
+  width: 100%;
+  max-width: 100%;
+  overflow: visible;
+  background: rgba(250, 248, 240, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+html[data-platform="web"] .topbar-actions {
+  gap: 8px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+html[data-platform="web"] .topbar-download-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1.5px solid #dbe9cb;
+  border-bottom: 3px solid #c5dbb0;
+  color: #2f5c0d;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+html[data-platform="web"] .topbar-download-btn:active {
+  transform: translateY(1px);
+}
+
+@media (max-width: 480px) {
+  html[data-platform="web"] .topbar {
+    padding: calc(8px + var(--safe-top)) 10px 8px !important;
+    gap: 6px;
+  }
+
+  html[data-platform="web"] .mobile-brand-mark {
+    font-size: 16px;
+    gap: 4px;
+  }
+
+  html[data-platform="web"] .topbar-mascot {
+    width: 26px;
+    height: 26px;
+  }
+
+  html[data-platform="web"] .topbar-actions {
+    gap: 4px;
+  }
+
+  html[data-platform="web"] .streak-pill,
+  html[data-platform="web"] .gem-pill,
+  html[data-platform="web"] .gem-currency-pill {
+    padding: 4px 7px;
+    font-size: 11px;
+    gap: 3px;
+    border-radius: 13px;
+  }
+
+  html[data-platform="web"] .topbar-download-btn,
+  html[data-platform="web"] .topbar-bell-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+    flex-shrink: 0;
+  }
+
+  html[data-platform="web"] .header-profile .avatar.small {
+    width: 30px;
+    height: 30px;
+    font-size: 12px;
+  }
+}
+
+/* Main content paddings & widths (Mobile + Tablet web) */
+html[data-platform="web"] main {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 20px 20px calc(102px + var(--safe-bottom)) !important;
+  box-sizing: border-box;
+  overflow-x: visible;
+}
+
+@media (max-width: 767px) {
+  html[data-platform="web"] main {
+    padding: 14px 16px calc(98px + var(--safe-bottom)) !important;
+  }
+
+  html[data-platform="web"] .practice-page,
+  html[data-platform="web"] .games-page,
+  html[data-platform="web"] .learn-redesign-journey,
+  html[data-platform="web"] .social-page-wrap,
+  html[data-platform="web"] .reminders-page-view {
+    padding-top: 4px !important;
+  }
+
+  /* Avoid iOS Safari auto-zoom on form controls <16px */
+  html[data-platform="web"] input,
+  html[data-platform="web"] select,
+  html[data-platform="web"] textarea {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* Tablet Web (768px - 1023px): fluid wider column with heading & comfortable grids */
+@media (min-width: 768px) and (max-width: 1023px) {
+  html[data-platform="web"] .workspace {
+    max-width: 100% !important;
+  }
+
+  html[data-platform="web"] main {
+    max-width: 880px;
+    padding: 24px 28px calc(106px + var(--safe-bottom)) !important;
+  }
+
+  html[data-platform="web"] .page-heading {
+    display: flex !important;
+    margin-bottom: 20px;
+  }
+
+  html[data-platform="web"] .mobile-nav {
+    max-width: 520px;
+  }
+}
+
+/* Lift cramped 500-540px inner caps inside tablet+ containers */
+@media (min-width: 768px) {
+  html[data-platform="web"] .social-page-wrap,
+  html[data-platform="web"] .learn-redesign-journey,
+  html[data-platform="web"] .learn-gamified-view,
+  html[data-platform="web"] .reminders-page-view,
+  html[data-platform="web"] .solo-flow-page {
+    max-width: 100%;
+  }
+
+  html[data-platform="web"] .learn-redesign-journey {
+    padding-bottom: 32px;
+  }
+}
+
+/* Practice Grid: Container Query instead of broken viewport >1080px rule */
+html[data-platform="web"] .practice-page {
+  container-type: inline-size;
+  container-name: practice-layout;
+  padding-bottom: 24px !important;
+}
+
+html[data-platform="web"] .practice-grid {
+  grid-template-columns: 1fr;
+}
+
+@container practice-layout (min-width: 720px) {
+  html[data-platform="web"] .practice-grid {
+    grid-template-columns: minmax(240px, 310px) minmax(0, 1fr);
+    gap: 24px;
+  }
+}
+
+/* iOS Browser PWA Banner */
+html[data-platform="web"] .ios-pwa-banner {
+  background: linear-gradient(135deg, #f3fae9 0%, #ffffff 100%);
+  border: 2px solid #d5ebb9;
+  border-bottom: 4px solid #b8dc92;
+  border-radius: 22px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+html[data-platform="web"] .ios-pwa-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: #e5f6d1;
+  color: #366c0a;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+html[data-platform="web"] .ios-pwa-text h4 {
+  margin: 0 0 3px;
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+html[data-platform="web"] .ios-pwa-text p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #536446;
+}
+
+/* Demo badge floating safely without pushing flex layout */
+html[data-platform="web"] .demo-signup {
+  position: fixed;
+  right: 16px;
+  bottom: calc(92px + var(--safe-bottom));
+  z-index: 950;
+  width: fit-content;
+}
+
+/* ==========================================================================
+   PHASE 2: WEB DESKTOP SHELL, PERSISTENT TOPBAR, SIDEBAR, FOCUS MODE & MODALS
+   ========================================================================== */
+
+html[data-platform="web"] .web-sidebar {
+  display: none;
+}
+
+html[data-platform="web"] .web-topbar-title {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  html[data-platform="web"] .app-shell {
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  html[data-platform="web"] .mobile-nav {
+    display: none !important;
+  }
+
+  html[data-platform="web"] .web-sidebar {
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    width: 220px;
+    flex-shrink: 0;
+    padding: 22px 14px 18px;
+    background: #fffdf8;
+    border-right: 2px solid var(--border);
+    box-sizing: border-box;
+    overflow-y: auto;
+    z-index: 30;
+  }
+
+  html[data-platform="web"] .web-sidebar-brand-row {
+    padding: 0 8px;
+    margin-bottom: 22px;
+  }
+
+  html[data-platform="web"] .web-sidebar-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 28px;
+    letter-spacing: -1.2px;
+    font-weight: 900;
+    line-height: 1;
+    color: var(--ink);
+  }
+
+  html[data-platform="web"] .web-sidebar-brand .brand-dot {
+    color: var(--duo-green);
+  }
+
+  html[data-platform="web"] .web-sidebar-tagline {
+    margin: 8px 0 0 2px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  html[data-platform="web"] .web-nav-section-label {
+    font-size: 10px;
+    letter-spacing: 1.4px;
+    font-weight: 800;
+    color: #94a188;
+    margin: 0 0 10px 10px;
+  }
+
+  html[data-platform="web"] .web-sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  html[data-platform="web"] .web-nav-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 13px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #556371;
+    border-radius: 16px;
+    text-align: left;
+    border: 2px solid transparent;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+
+  html[data-platform="web"] .web-nav-item.active {
+    background: var(--duo-green-light);
+    color: #255206;
+    border-color: #c7eb98;
+    border-bottom: 4px solid #addb70;
+  }
+
+  html[data-platform="web"] .web-nav-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  html[data-platform="web"] .web-nav-badge {
+    margin-left: auto;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #ff4b4b;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  html[data-platform="web"] .web-nav-dot {
+    margin-left: auto;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--duo-green);
+  }
+
+  html[data-platform="web"] .web-sidebar-spacer {
+    flex: 1 1 auto;
+    min-height: 16px;
+  }
+
+  html[data-platform="web"] .web-sidebar-profile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 6px 2px;
+    border-top: 2px solid var(--border);
+    width: 100%;
+    text-align: left;
+  }
+
+  html[data-platform="web"] .web-sidebar-profile-meta {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+  }
+
+  html[data-platform="web"] .web-sidebar-profile-meta b {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  html[data-platform="web"] .web-sidebar-profile-meta small {
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  html[data-platform="web"] .web-sidebar-streak-icon {
+    color: #ff9600;
+    flex-shrink: 0;
+  }
+
+  html[data-platform="web"] .workspace {
+    flex: 1 1 0%;
+    min-width: 0;
+    max-width: 100% !important;
+  }
+
+  html[data-platform="web"] .topbar {
+    padding: 12px 32px !important;
+  }
+
+  html[data-platform="web"] .mobile-brand-mark {
+    display: none !important;
+  }
+
+  html[data-platform="web"] .web-topbar-title {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  html[data-platform="web"] .web-topbar-eyebrow {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.9px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  html[data-platform="web"] .web-topbar-heading {
+    font-size: 17px;
+    font-weight: 900;
+    letter-spacing: -0.3px;
+    color: var(--ink);
+  }
+
+  html[data-platform="web"] main {
+    max-width: 1200px;
+    padding: 24px 24px 56px !important;
+  }
+
+  /* Avoid repeating large mobile headings when persistent topbar already shows active page */
+  html[data-platform="web"] .page-heading {
+    display: none !important;
+  }
+
+  html[data-platform="web"] .demo-signup {
+    bottom: 24px;
+    right: 28px;
+  }
+
+  html[data-platform="web"] .toast {
+    left: auto;
+    right: 28px;
+    bottom: 28px;
+    transform: none;
+  }
+
+  html[data-platform="web"] .global-game-invite-toast {
+    left: auto;
+    right: 24px;
+    top: 76px;
+    transform: none;
+    width: 380px;
+    max-width: calc(100vw - 48px);
+  }
+}
+
+@media (min-width: 1280px) {
+  html[data-platform="web"] .web-sidebar {
+    width: 264px;
+    padding: 26px 18px 22px;
+  }
+
+  html[data-platform="web"] main {
+    max-width: 1280px;
+    padding: 32px 40px 64px !important;
+  }
+}
+
+/* Focus Mode for Fullscreen Lesson and Active Game Rooms */
+html[data-platform="web"] .app-shell.web-focus-mode {
+  flex-direction: column;
+}
+
+html[data-platform="web"] .app-shell.web-focus-mode .web-sidebar {
+  display: none !important;
+}
+
+html[data-platform="web"] .app-shell.web-focus-mode .lesson-page-workspace {
+  max-width: 780px !important;
+  margin: 0 auto !important;
+  width: 100% !important;
+}
+
+@media (min-width: 768px) {
+  html[data-platform="web"] .app-shell.web-focus-mode main {
+    max-width: 900px;
+    padding: 28px 32px 56px !important;
+  }
+
+  html[data-platform="web"] .modal {
+    width: min(560px, calc(100vw - 48px));
+    max-width: 100%;
+  }
+
+  html[data-platform="web"] .lesson-preview-modal {
+    width: min(600px, calc(100vw - 48px));
+    max-width: 100%;
+  }
+
+  html[data-platform="web"] .social-modal-card {
+    max-width: 520px;
+  }
+}
+
+/* ==========================================================================
+   PHASE 3: MULTI-COLUMN SCREEN LAYOUTS, HOVER STATES & POLISH
+   ========================================================================== */
+
+/* 1. Welcome / Auth Screen */
+@media (min-width: 768px) {
+  html[data-platform="web"] .unauth-screen {
+    padding: 32px 24px;
+  }
+
+  html[data-platform="web"] .welcome-screen-container {
+    max-width: 500px;
+    background: #ffffff;
+    border: 2px solid var(--border);
+    border-bottom: 5px solid #dcdcd0;
+    border-radius: 32px;
+    padding: 28px 32px;
+    box-shadow: 0 18px 46px rgba(32, 47, 54, 0.08);
+  }
+}
+
+/* 2. Home Dashboard: 2-Column Main + Right Rail on Desktop */
+@media (min-width: 1024px) {
+  html[data-platform="web"] .dashboard-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(300px, 380px);
+    gap: 24px;
+    align-items: start;
+  }
+
+  html[data-platform="web"] .dashboard-right {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    position: sticky;
+    top: 84px;
+  }
+}
+
+@media (min-width: 1440px) {
+  html[data-platform="web"] .dashboard-grid {
+    grid-template-columns: minmax(0, 1.55fr) minmax(340px, 410px);
+    gap: 28px;
+  }
+}
+
+/* 3. Learn Journey */
+@media (min-width: 1024px) {
+  html[data-platform="web"] .learn-redesign-journey {
+    max-width: 860px;
+    margin: 0 auto;
+    gap: 22px;
+  }
+
+  html[data-platform="web"] .learn-gamified-view {
+    max-width: 860px;
+  }
+}
+
+/* 4. Friends & Communities: 2-Col Card Grids */
+@media (min-width: 768px) {
+  html[data-platform="web"] .social-page-wrap {
+    max-width: 1080px;
+    gap: 16px;
+  }
+
+  html[data-platform="web"] .social-cards-stack {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    align-items: stretch;
+  }
+
+  html[data-platform="web"] .social-cards-stack:has(.social-empty-card) {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 5. Practice AI Chat Height & Container Scaling */
+@media (min-width: 1024px) {
+  html[data-platform="web"] .ai-chat-container {
+    height: clamp(460px, 60dvh, 660px);
+  }
+}
+
+/* 6. Games Setup: Side-by-side Join & Create on >=900px */
+@media (min-width: 900px) {
+  html[data-platform="web"] .game-setup-main {
+    display: grid;
+    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+}
+
+@media (min-width: 1024px) {
+  html[data-platform="web"] .solo-flow-page {
+    max-width: 780px;
+    margin: 0 auto;
+  }
+}
+
+/* 7. Profile, Achievements, Rewards & Reminders */
+@media (min-width: 768px) {
+  html[data-platform="web"] .profile-page-view {
+    max-width: 1120px;
+    margin: 0 auto;
+  }
+
+  html[data-platform="web"] .profile-stats-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  html[data-platform="web"] .profile-hub-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  html[data-platform="web"] .achievements-badge-grid {
+    grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+    gap: 14px;
+  }
+
+  html[data-platform="web"] .reminders-page-view {
+    max-width: 880px;
+    margin: 0 auto;
+  }
+}
+
+@media (min-width: 900px) {
+  html[data-platform="web"] .reward-history-list,
+  html[data-platform="web"] .reward-certificates-strip {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+
+/* 8. Fullscreen Lesson Options Grid on >=640px */
+@media (min-width: 640px) {
+  html[data-platform="web"] .lesson-page-screen .answer-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+
+/* 9. Pointer-only Hover Elevation */
+@media (hover: hover) and (pointer: fine) {
+  html[data-platform="web"] .web-nav-item:hover:not(.active) {
+    background: #f3f6ea;
+    color: var(--ink);
+  }
+
+  html[data-platform="web"] .profile-hub-card:hover,
+  html[data-platform="web"] .journey-summary-card:hover,
+  html[data-platform="web"] .badge-grid-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(32, 47, 54, 0.08);
+  }
+}
+
+
