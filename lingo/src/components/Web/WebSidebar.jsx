@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  BookOpen, Users, Headphones, Gamepad2, User, BellRing, Flame, Zap, Sparkles, ArrowRight
+  BookOpen, Users, Headphones, Gamepad2, User, Flame
 } from 'lucide-react';
 import { Sprout } from '../../Art.jsx';
 
@@ -19,21 +19,16 @@ const NAV_ITEMS = [
   ['practice', 'Practice', Headphones],
   ['games', 'Play', Gamepad2],
   ['profile', 'Profile', User],
-  ['reminders', 'Reminders', BellRing],
 ];
 
 export function WebSidebar({
   page,
   navigate,
   user,
-  progress,
   selectedAvatar,
   avatarColor,
   socialUnreadCount = 0,
-  onOpenLesson,
 }) {
-  const completedCount = progress?.completed?.length || 0;
-
   return (
     <aside className="web-sidebar" aria-label="Primary Navigation">
       <div className="web-sidebar-brand-row">
@@ -51,7 +46,7 @@ export function WebSidebar({
       <span className="web-nav-section-label">EXPLORE</span>
       <nav className="web-sidebar-nav" role="navigation" aria-label="Desktop Navigation">
         {NAV_ITEMS.map(([key, label, Icon]) => {
-          const isActive = page === key;
+          const isActive = page === key || (key === 'profile' && page === 'reminders');
           const showBadge = key === 'friends' && socialUnreadCount > 0;
           return (
             <button
@@ -74,21 +69,6 @@ export function WebSidebar({
       </nav>
 
       <div className="web-sidebar-spacer" />
-
-      {onOpenLesson && (
-        <div className="web-sidebar-promo">
-          <div className="web-sidebar-promo-head">
-            <Sparkles size={15} />
-            <span>{progress?.streak ? `${progress.streak}d Streak` : 'Daily Spark'}</span>
-            <span className="web-sidebar-promo-xp"><Zap size={12} fill="currentColor" /> {progress?.xp || 0}</span>
-          </div>
-          <p>Keep momentum going with your next bite-sized English lesson.</p>
-          <button type="button" className="web-sidebar-promo-btn" onClick={onOpenLesson}>
-            <span>Lesson {completedCount + 1}</span>
-            <ArrowRight size={14} />
-          </button>
-        </div>
-      )}
 
       {user && (
         <button

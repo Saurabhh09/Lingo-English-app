@@ -21,12 +21,13 @@ const VIEWPORTS = [
 ];
 
 async function navTo(page, key, isDesktop) {
-  const selector = isDesktop ? `[data-testid="web-nav-${key}"]` : `[data-testid="nav-${key}"]`;
-  if (!isDesktop && key === 'reminders') {
-    await page.locator('[data-testid="nav-profile"]').click();
+  if (key === 'reminders') {
+    const profileSel = isDesktop ? '[data-testid="web-nav-profile"]' : '[data-testid="nav-profile"]';
+    await page.locator(profileSel).click();
     await page.locator('.profile-hub-card.reminders-hub').click();
     return;
   }
+  const selector = isDesktop ? `[data-testid="web-nav-${key}"]` : `[data-testid="nav-${key}"]`;
   await page.locator(selector).click();
 }
 
@@ -93,6 +94,8 @@ for (const vp of VIEWPORTS) {
     await expect(page.locator('.topbar')).toBeVisible();
     await expect(page.locator('.download-apk-pill')).toHaveCount(0);
     await expect(page.locator('.install-apk-banner')).toHaveCount(0);
+    await expect(page.locator('[data-testid="web-nav-reminders"]')).toHaveCount(0);
+    await expect(page.locator('.web-sidebar-promo')).toHaveCount(0);
 
     // Home
     await assertCleanViewportMetrics(page, `${vp.name}/home`, vp.isDesktop);
