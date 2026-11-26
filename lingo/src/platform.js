@@ -12,3 +12,27 @@ export function isNativeUI() {
   }
   return isNativePlatform();
 }
+
+export function isIOSBrowser() {
+  if (isNativeUI() || typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+/**
+ * Applies DOM platform attribute and relaxes user pinch-zoom only on web browsers.
+ * Never mutates Android native WebView viewport constraints.
+ */
+export function configureWebPlatformDocument() {
+  if (typeof document === 'undefined') return 'web';
+  const native = isNativeUI();
+  const mode = native ? 'native' : 'web';
+  document.documentElement.dataset.platform = mode;
+  if (!native) {
+    const vp = document.querySelector('meta[name="viewport"]');
+    if (vp) {
+      vp.setAttribute('content', 'width=device-width, initial-scale=1.0, viewport-fit=cover');
+    }
+  }
+  return mode;
+}
