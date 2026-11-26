@@ -962,11 +962,11 @@ function App() {
   const socialUnreadCount = socialPresence
     ? Math.max(socialPresence.unreadCount || 0, socialPresence.socialBadgeCount || 0)
     : (
-        (socialOverview?.unreadCount || 0) +
-        (socialOverview?.incomingRequests?.length || 0) +
-        (socialOverview?.communityInvitations?.length || 0) +
-        (socialOverview?.gameInvitations?.length || 0)
-      );
+      (socialOverview?.unreadCount || 0) +
+      (socialOverview?.incomingRequests?.length || 0) +
+      (socialOverview?.communityInvitations?.length || 0) +
+      (socialOverview?.gameInvitations?.length || 0)
+    );
   const liveGameInvite = (
     socialPresence?.latestGameInvite ||
     socialOverview?.gameInvitations?.[0] ||
@@ -1256,11 +1256,9 @@ function App() {
           page={page}
           navigate={navigate}
           user={user}
-          progress={progress}
           selectedAvatar={selectedAvatar}
           avatarColor={avatarColor}
           socialUnreadCount={socialUnreadCount}
-          onOpenLesson={() => openLesson(activeLesson)}
         />
       )}
       <div className="workspace">
