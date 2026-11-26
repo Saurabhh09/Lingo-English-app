@@ -605,15 +605,44 @@ function App() {
   }, [isNative, page]);
 
   useEffect(() => {
+    if (isNative || typeof document === 'undefined') return;
+    if (!user || !progress) {
+      document.title = 'Lingo — A little English, every day';
+      return;
+    }
+    if (activeLessonPage) {
+      document.title = activeLessonPage.title ? `${activeLessonPage.title} — Lingo` : 'Lesson — Lingo';
+      return;
+    }
+    const labels = {
+      home: 'Home',
+      learn: 'Learn',
+      friends: 'Friends',
+      practice: 'Practice',
+      games: 'Play',
+      profile: 'Profile',
+      reminders: 'Reminders'
+    };
+    document.title = `Lingo — ${labels[page] || 'Learn English'}`;
+  }, [isNative, user, progress, page, activeLessonPage]);
+
+  useEffect(() => {
     const handler = e => {
-      if (modal || authModal || ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+      const target = e.target;
+      const isEditable = target && (
+        ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) ||
+        target.isContentEditable ||
+        target.getAttribute?.('role') === 'textbox'
+      );
+      if (isEditable || modal || authModal || activeLessonPage || notifOpen || (page === 'games' && game)) return;
+      if (document.querySelector('.modal, dialog[open], .social-modal-overlay, .confirm-leave-overlay, .lesson-preview-modal')) return;
       const i = pages.indexOf(page);
       if (e.key === 'ArrowRight') navigate(pages[(i + 1) % pages.length]);
       if (e.key === 'ArrowLeft') navigate(pages[(i + pages.length - 1) % pages.length]);
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [page, modal, authModal]);
+  }, [page, modal, authModal, activeLessonPage, notifOpen, game]);
 
   useEffect(() => {
     if (!game || game.status === 'finished') return;
@@ -2511,6 +2540,38 @@ function Lesson({ lesson, api, updateProgress, onCompleteCheckpoint, savedWords 
     );
   }, [curriculum?.id, lesson?.id, attemptSeq, index, currentEx?.id, currentEx?.options]);
 
+  const lessonKeyRef = useRef({});
+
+  useEffect(() => {
+    if (isNativeUI()) return;
+    const handler = e => {
+      const target = e.target;
+      if (target && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable)) return;
+      if (document.querySelector('.confirm-leave-overlay, dialog[open], .modal')) return;
+      const state = lessonKeyRef.current;
+      if (!state || state.stage !== 'practice' || state.busy || state.lifecycle === 'submitting') return;
+      if (['1', '2', '3', '4'].includes(e.key) && !state.checked) {
+        const optionIdx = Number(e.key) - 1;
+        if (state.optionsLength > optionIdx) {
+          e.preventDefault();
+          state.setSelected(optionIdx);
+        }
+        return;
+      }
+      if (e.key === 'Enter' && !target?.closest?.('button, a')) {
+        if (state.checked) {
+          e.preventDefault();
+          state.advance();
+        } else if (state.selected !== null) {
+          e.preventDefault();
+          state.checkAnswer();
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   if (loading || lifecycle === 'loading') {
     return <div className="lesson-loading-state"><Loader2 className="spin" size={32} /><p>Loading lesson curriculum & exercises…</p></div>;
   }
@@ -2624,6 +2685,17 @@ function Lesson({ lesson, api, updateProgress, onCompleteCheckpoint, savedWords 
   }
 
   const primaryObj = curriculum.primaryObjective;
+  lessonKeyRef.current = {
+    stage,
+    busy,
+    lifecycle,
+    checked,
+    selected,
+    optionsLength: currentShuffle?.options?.length || 0,
+    setSelected,
+    checkAnswer,
+    advance
+  };
 
   if (stage === 'results' && result) {
     const isPathFinished = lessons[lessons.length - 1]?.id === curriculum.id;

@@ -558,3 +558,168 @@ html[data-platform="web"] .app-shell.web-focus-mode .lesson-page-workspace {
   }
 }
 
+/* ==========================================================================
+   PHASE 3: MULTI-COLUMN SCREEN LAYOUTS, HOVER STATES & POLISH
+   ========================================================================== */
+
+/* 1. Welcome / Auth Screen */
+@media (min-width: 768px) {
+  html[data-platform="web"] .unauth-screen {
+    padding: 32px 24px;
+  }
+
+  html[data-platform="web"] .welcome-screen-container {
+    max-width: 500px;
+    background: #ffffff;
+    border: 2px solid var(--border);
+    border-bottom: 5px solid #dcdcd0;
+    border-radius: 32px;
+    padding: 28px 32px;
+    box-shadow: 0 18px 46px rgba(32, 47, 54, 0.08);
+  }
+}
+
+/* 2. Home Dashboard: 2-Column Main + Right Rail on Desktop */
+@media (min-width: 1024px) {
+  html[data-platform="web"] .dashboard-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(300px, 380px);
+    gap: 24px;
+    align-items: start;
+  }
+
+  html[data-platform="web"] .dashboard-right {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    position: sticky;
+    top: 84px;
+  }
+}
+
+@media (min-width: 1440px) {
+  html[data-platform="web"] .dashboard-grid {
+    grid-template-columns: minmax(0, 1.55fr) minmax(340px, 410px);
+    gap: 28px;
+  }
+}
+
+/* 3. Learn Journey */
+@media (min-width: 1024px) {
+  html[data-platform="web"] .learn-redesign-journey {
+    max-width: 860px;
+    margin: 0 auto;
+    gap: 22px;
+  }
+
+  html[data-platform="web"] .learn-gamified-view {
+    max-width: 860px;
+  }
+}
+
+/* 4. Friends & Communities: 2-Col Card Grids */
+@media (min-width: 768px) {
+  html[data-platform="web"] .social-page-wrap {
+    max-width: 1080px;
+    gap: 16px;
+  }
+
+  html[data-platform="web"] .social-cards-stack {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    align-items: stretch;
+  }
+
+  html[data-platform="web"] .social-cards-stack:has(.social-empty-card) {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 5. Practice AI Chat Height & Container Scaling */
+@media (min-width: 1024px) {
+  html[data-platform="web"] .ai-chat-container {
+    height: clamp(460px, 60dvh, 660px);
+  }
+}
+
+/* 6. Games Setup: Side-by-side Join & Create on >=900px */
+@media (min-width: 900px) {
+  html[data-platform="web"] .game-setup-main {
+    display: grid;
+    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+}
+
+@media (min-width: 1024px) {
+  html[data-platform="web"] .solo-flow-page {
+    max-width: 780px;
+    margin: 0 auto;
+  }
+}
+
+/* 7. Profile, Achievements, Rewards & Reminders */
+@media (min-width: 768px) {
+  html[data-platform="web"] .profile-page-view {
+    max-width: 1120px;
+    margin: 0 auto;
+  }
+
+  html[data-platform="web"] .profile-stats-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  html[data-platform="web"] .profile-hub-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  html[data-platform="web"] .achievements-badge-grid {
+    grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+    gap: 14px;
+  }
+
+  html[data-platform="web"] .reminders-page-view {
+    max-width: 880px;
+    margin: 0 auto;
+  }
+}
+
+@media (min-width: 900px) {
+  html[data-platform="web"] .reward-history-list,
+  html[data-platform="web"] .reward-certificates-strip {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+
+/* 8. Fullscreen Lesson Options Grid on >=640px */
+@media (min-width: 640px) {
+  html[data-platform="web"] .lesson-page-screen .answer-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+
+/* 9. Pointer-only Hover Elevation */
+@media (hover: hover) and (pointer: fine) {
+  html[data-platform="web"] .web-nav-item:hover:not(.active) {
+    background: #f3f6ea;
+    color: var(--ink);
+  }
+
+  html[data-platform="web"] .profile-hub-card:hover,
+  html[data-platform="web"] .journey-summary-card:hover,
+  html[data-platform="web"] .badge-grid-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(32, 47, 54, 0.08);
+  }
+}
+
+
