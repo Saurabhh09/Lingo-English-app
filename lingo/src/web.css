@@ -58,33 +58,59 @@ html[data-platform="web"] .topbar-actions {
   flex-shrink: 1;
 }
 
+html[data-platform="web"] .topbar-download-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1.5px solid #dbe9cb;
+  border-bottom: 3px solid #c5dbb0;
+  color: #2f5c0d;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+html[data-platform="web"] .topbar-download-btn:active {
+  transform: translateY(1px);
+}
+
 @media (max-width: 480px) {
   html[data-platform="web"] .topbar {
-    padding: calc(8px + var(--safe-top)) 12px 8px !important;
+    padding: calc(8px + var(--safe-top)) 10px 8px !important;
     gap: 6px;
   }
 
   html[data-platform="web"] .mobile-brand-mark {
-    font-size: 17px;
-    gap: 5px;
+    font-size: 16px;
+    gap: 4px;
+  }
+
+  html[data-platform="web"] .topbar-mascot {
+    width: 26px;
+    height: 26px;
   }
 
   html[data-platform="web"] .topbar-actions {
-    gap: 5px;
+    gap: 4px;
   }
 
   html[data-platform="web"] .streak-pill,
   html[data-platform="web"] .gem-pill,
   html[data-platform="web"] .gem-currency-pill {
-    padding: 5px 8px;
-    font-size: 11.5px;
-    gap: 4px;
-    border-radius: 14px;
+    padding: 4px 7px;
+    font-size: 11px;
+    gap: 3px;
+    border-radius: 13px;
   }
 
+  html[data-platform="web"] .topbar-download-btn,
   html[data-platform="web"] .topbar-bell-btn {
-    width: 32px;
-    height: 32px;
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
     flex-shrink: 0;
   }
 

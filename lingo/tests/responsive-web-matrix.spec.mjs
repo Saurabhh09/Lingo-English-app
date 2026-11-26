@@ -37,6 +37,7 @@ async function assertCleanViewportMetrics(page, label, isDesktop) {
     const innerH = window.innerHeight;
     const docScrollW = document.documentElement.scrollWidth;
     const bell = document.querySelector('.topbar-bell-btn')?.getBoundingClientRect() || null;
+    const dl = document.querySelector('.topbar-download-btn')?.getBoundingClientRect() || null;
     const profile = document.querySelector('.header-profile')?.getBoundingClientRect() || null;
     const mobileNav = document.querySelector('.mobile-nav');
     const sidebar = document.querySelector('.web-sidebar');
@@ -48,6 +49,7 @@ async function assertCleanViewportMetrics(page, label, isDesktop) {
       innerW,
       innerH,
       bell: bell ? { left: bell.left, right: bell.right, top: bell.top, bottom: bell.bottom, w: bell.width } : null,
+      dl: dl ? { left: dl.left, right: dl.right, top: dl.top, bottom: dl.bottom, w: dl.width } : null,
       profile: profile ? { left: profile.left, right: profile.right, top: profile.top, bottom: profile.bottom, w: profile.width } : null,
       mobileNavVisible,
       sidebarVisible,
@@ -59,6 +61,10 @@ async function assertCleanViewportMetrics(page, label, isDesktop) {
   if (metrics.bell) {
     expect(metrics.bell.right, `${label} bell clipped right`).toBeLessThanOrEqual(metrics.innerW + 1);
     expect(metrics.bell.left, `${label} bell negative left`).toBeGreaterThanOrEqual(0);
+  }
+  if (metrics.dl) {
+    expect(metrics.dl.right, `${label} download icon clipped right`).toBeLessThanOrEqual(metrics.innerW + 1);
+    expect(metrics.dl.left, `${label} download icon negative left`).toBeGreaterThanOrEqual(0);
   }
   if (metrics.profile) {
     expect(metrics.profile.right, `${label} avatar clipped right`).toBeLessThanOrEqual(metrics.innerW + 1);
@@ -99,12 +105,19 @@ for (const vp of VIEWPORTS) {
     await expect(page.locator('[data-testid="web-nav-reminders"]')).toHaveCount(0);
     await expect(page.locator('.web-sidebar-promo')).toHaveCount(0);
 
+    // Web Home Header Download Icon (not on other screens, not on Android)
+    const headerDl = page.locator('.topbar-download-btn');
+    await expect(headerDl).toBeVisible();
+    await expect(headerDl).toHaveAttribute('href', '/lingo.apk');
+    await expect(headerDl).toHaveAttribute('download', 'lingo.apk');
+
     // Home
     await assertCleanViewportMetrics(page, `${vp.name}/home`, vp.isDesktop);
     await expect(page).toHaveTitle(/Lingo/);
 
-    // Learn + Lesson focus mode + keyboard shortcuts (1-4 & Enter)
+    // Learn + confirm header download icon stays Home-only
     await navTo(page, 'learn', vp.isDesktop);
+    await expect(page.locator('.topbar-download-btn')).toHaveCount(0);
     await expect(page.locator('.learn-redesign-journey')).toBeVisible();
     await assertCleanViewportMetrics(page, `${vp.name}/learn`, vp.isDesktop);
 
