@@ -1,0 +1,227 @@
+/* ==========================================================================
+   LINGO WEB RESPONSIVE STYLESHEET
+   Strictly scoped under html[data-platform="web"] so Capacitor Android stays untouched.
+   ========================================================================== */
+
+html[data-platform="web"] {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  scrollbar-gutter: stable;
+}
+
+html[data-platform="web"] body {
+  overflow-x: clip;
+}
+
+html[data-platform="web"] #root,
+html[data-platform="web"] .app-shell {
+  width: 100%;
+  max-width: 100%;
+  min-height: 100dvh;
+  overflow-x: clip;
+}
+
+/* Prevent .demo-signup flex sibling from splitting .workspace width horizontally */
+html[data-platform="web"] .app-shell {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+html[data-platform="web"] .workspace {
+  margin: 0 auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 100dvh;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: clip;
+  padding-bottom: 0 !important;
+}
+
+/* Clean Topbar without overflow/clipping on 360px+ web viewports */
+html[data-platform="web"] .topbar {
+  padding: calc(10px + var(--safe-top)) 16px 10px !important;
+  min-height: 60px;
+  width: 100%;
+  max-width: 100%;
+  overflow: visible;
+  background: rgba(250, 248, 240, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+html[data-platform="web"] .topbar-actions {
+  gap: 8px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+@media (max-width: 480px) {
+  html[data-platform="web"] .topbar {
+    padding: calc(8px + var(--safe-top)) 12px 8px !important;
+    gap: 6px;
+  }
+
+  html[data-platform="web"] .mobile-brand-mark {
+    font-size: 17px;
+    gap: 5px;
+  }
+
+  html[data-platform="web"] .topbar-actions {
+    gap: 5px;
+  }
+
+  html[data-platform="web"] .streak-pill,
+  html[data-platform="web"] .gem-pill,
+  html[data-platform="web"] .gem-currency-pill {
+    padding: 5px 8px;
+    font-size: 11.5px;
+    gap: 4px;
+    border-radius: 14px;
+  }
+
+  html[data-platform="web"] .topbar-bell-btn {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+  }
+
+  html[data-platform="web"] .header-profile .avatar.small {
+    width: 30px;
+    height: 30px;
+    font-size: 12px;
+  }
+}
+
+/* Main content paddings & widths (Mobile + Tablet web) */
+html[data-platform="web"] main {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 20px 20px calc(102px + var(--safe-bottom)) !important;
+  box-sizing: border-box;
+  overflow-x: visible;
+}
+
+@media (max-width: 767px) {
+  html[data-platform="web"] main {
+    padding: 14px 16px calc(98px + var(--safe-bottom)) !important;
+  }
+
+  html[data-platform="web"] .practice-page,
+  html[data-platform="web"] .games-page,
+  html[data-platform="web"] .learn-redesign-journey,
+  html[data-platform="web"] .social-page-wrap,
+  html[data-platform="web"] .reminders-page-view {
+    padding-top: 4px !important;
+  }
+
+  /* Avoid iOS Safari auto-zoom on form controls <16px */
+  html[data-platform="web"] input,
+  html[data-platform="web"] select,
+  html[data-platform="web"] textarea {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* Tablet Web (768px - 1023px): fluid wider column with heading & comfortable grids */
+@media (min-width: 768px) and (max-width: 1023px) {
+  html[data-platform="web"] .workspace {
+    max-width: 100% !important;
+  }
+
+  html[data-platform="web"] main {
+    max-width: 880px;
+    padding: 24px 28px calc(106px + var(--safe-bottom)) !important;
+  }
+
+  html[data-platform="web"] .page-heading {
+    display: flex !important;
+    margin-bottom: 20px;
+  }
+
+  html[data-platform="web"] .mobile-nav {
+    max-width: 520px;
+  }
+}
+
+/* Lift cramped 500-540px inner caps inside tablet+ containers */
+@media (min-width: 768px) {
+  html[data-platform="web"] .social-page-wrap,
+  html[data-platform="web"] .learn-redesign-journey,
+  html[data-platform="web"] .learn-gamified-view,
+  html[data-platform="web"] .reminders-page-view,
+  html[data-platform="web"] .solo-flow-page {
+    max-width: 100%;
+  }
+
+  html[data-platform="web"] .learn-redesign-journey {
+    padding-bottom: 32px;
+  }
+}
+
+/* Practice Grid: Container Query instead of broken viewport >1080px rule */
+html[data-platform="web"] .practice-page {
+  container-type: inline-size;
+  container-name: practice-layout;
+  padding-bottom: 24px !important;
+}
+
+html[data-platform="web"] .practice-grid {
+  grid-template-columns: 1fr;
+}
+
+@container practice-layout (min-width: 720px) {
+  html[data-platform="web"] .practice-grid {
+    grid-template-columns: minmax(260px, 330px) minmax(0, 1fr);
+    gap: 24px;
+  }
+}
+
+/* iOS Browser PWA Banner */
+html[data-platform="web"] .ios-pwa-banner {
+  background: linear-gradient(135deg, #f3fae9 0%, #ffffff 100%);
+  border: 2px solid #d5ebb9;
+  border-bottom: 4px solid #b8dc92;
+  border-radius: 22px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+html[data-platform="web"] .ios-pwa-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: #e5f6d1;
+  color: #366c0a;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+html[data-platform="web"] .ios-pwa-text h4 {
+  margin: 0 0 3px;
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+html[data-platform="web"] .ios-pwa-text p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #536446;
+}
+
+/* Demo badge floating safely without pushing flex layout */
+html[data-platform="web"] .demo-signup {
+  position: fixed;
+  right: 16px;
+  bottom: calc(92px + var(--safe-bottom));
+  z-index: 950;
+  width: fit-content;
+}

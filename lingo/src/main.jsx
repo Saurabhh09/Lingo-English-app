@@ -8,7 +8,7 @@ import {
   GraduationCap, Info, ShieldCheck, Heart, User, Edit3, Smartphone, Download, Gem, Bell, CalendarClock, BellRing
 } from 'lucide-react';
 import { getApiUrl, isNativePlatform, requestApi } from './apiConfig.js';
-import { isNativeUI } from './platform.js';
+import { isNativeUI, configureWebPlatformDocument, isIOSBrowser } from './platform.js';
 import {
   BookArt, GameArt, TopicArt, Sprout, Mascot,
   AppleIllustration, CupIllustration, DogIllustration, CatIllustration
@@ -21,6 +21,7 @@ import './components/Games/games.css';
 import './components/Achievements/achievements.css';
 import './components/Rewards/rewards.css';
 import './components/Social/social.css';
+import './web.css';
 import { Learn } from './components/Learn/Learn.jsx';
 import { PracticeHub } from './components/Practice/PracticeHub.jsx';
 import { GamesSetup as Games } from './components/Games/GamesSetup.jsx';
@@ -1208,20 +1209,6 @@ function App() {
                 <Gem size={15} />
                 <b>{progress.gems || 0}</b>
               </div>
-              {/* Download Android APK Button for Web Users */}
-              {!isNative && (
-                <a
-                  href="/lingo.apk"
-                  download="lingo.apk"
-                  className="download-apk-pill"
-                  title="Download Android APK"
-                  aria-label="Download Android App APK"
-                >
-                  <Smartphone size={15} />
-                  <span>Get App</span>
-                  <span className="apk-badge">APK</span>
-                </a>
-              )}
               {/* Notifications Bell */}
               <button
                 type="button"
@@ -1320,24 +1307,16 @@ function App() {
                     </div>
                   </div>
 
-                  {/* APK Download Banner for Web Users */}
-                  {!isNative && (
-                    <div className="install-apk-banner">
-                      <div className="install-apk-content">
-                        <div className="install-apk-icon">
-                          <Smartphone size={24} />
-                        </div>
-                        <div className="install-apk-text">
-                          <h4 className="install-apk-title">Install Lingo on your Android Phone</h4>
-                          <p className="install-apk-subtitle">
-                            Practice English speaking, vocabulary, and games anywhere directly from the mobile app.
-                          </p>
-                        </div>
+                  {/* Friendly iOS Home Screen Tip (Web only, Android APK cut on Web) */}
+                  {!isNative && isIOSBrowser() && (
+                    <div className="ios-pwa-banner" role="note">
+                      <div className="ios-pwa-icon">
+                        <Smartphone size={22} />
                       </div>
-                      <a href="/lingo.apk" download="lingo.apk" className="button green install-apk-btn">
-                        <Download size={17} />
-                        <span>Download APK</span>
-                      </a>
+                      <div className="ios-pwa-text">
+                        <h4>Use Lingo like an app on iPhone &amp; iPad</h4>
+                        <p>Tap Share in Safari and choose &ldquo;Add to Home Screen&rdquo; for full-screen practice.</p>
+                      </div>
                     </div>
                   )}
 
@@ -2907,5 +2886,5 @@ function Lesson({ lesson, api, updateProgress, onCompleteCheckpoint, savedWords 
   );
 }
 
-document.documentElement.dataset.platform = isNativeUI() ? 'native' : 'web';
+configureWebPlatformDocument();
 createRoot(document.getElementById('root')).render(<App />);
