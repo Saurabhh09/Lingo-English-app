@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Gamepad2,
   Users,
@@ -21,6 +21,7 @@ import {
   Tv,
   ChevronDown,
   ChevronUp,
+  X,
 } from 'lucide-react';
 import { GameArt } from '../../Art.jsx';
 import {
@@ -50,17 +51,28 @@ import {
  * - Host participation preference (Play with everyone vs Spectate in Friends mode; hidden in Solo)
  * - Safe mapping to current backend contract to preserve operational game creation
  */
-export function GamesSetup({ busy, createGame, joinGame }) {
+export function GamesSetup({ busy, createGame, joinGame, challengeFriend = null, onClearChallengeFriend }) {
   // Join Room State
   const [code, setCode] = useState('');
   const [inputTouched, setInputTouched] = useState(false);
 
   // Game Creation Configuration State (Phase 2 Model)
-  const [config, setConfig] = useState(DEFAULT_GAME_CONFIG);
+  const [config, setConfig] = useState(() => (
+    challengeFriend
+      ? { ...DEFAULT_GAME_CONFIG, mode: 'friends' }
+      : DEFAULT_GAME_CONFIG
+  ));
   const [touchedFields, setTouchedFields] = useState({});
 
   // Collapsible Accordion Step ('mode' | 'cefr' | 'topic' | 'duration' | 'questions' | null)
-  const [openStep, setOpenStep] = useState('mode');
+  const [openStep, setOpenStep] = useState(() => (challengeFriend ? 'cefr' : 'mode'));
+
+  useEffect(() => {
+    if (challengeFriend?.username) {
+      setConfig(prev => ({ ...prev, mode: 'friends' }));
+      setOpenStep('cefr');
+    }
+  }, [challengeFriend?.username]);
 
   function toggleStep(stepKey) {
     setOpenStep(curr => curr === stepKey ? null : stepKey);
@@ -230,6 +242,29 @@ export function GamesSetup({ busy, createGame, joinGame }) {
             </div>
 
             <form onSubmit={handleCreateSubmit} className="create-game-form">
+
+              {challengeFriend && (
+                <div className="challenge-target-banner" role="status">
+                  <span className={`avatar small ${challengeFriend.avatarColor || 'lime'}`}>
+                    {challengeFriend.avatar || '🌱'}
+                  </span>
+                  <div className="ctb-info">
+                    <span className="ctb-eyebrow">CHALLENGING FRIEND</span>
+                    <strong>{challengeFriend.name || challengeFriend.username}</strong>
+                    <small>Pick CEFR level, topic &amp; timer — invitation sends when you create the room.</small>
+                  </div>
+                  {onClearChallengeFriend && (
+                    <button
+                      type="button"
+                      className="ctb-clear"
+                      onClick={onClearChallengeFriend}
+                      aria-label="Cancel direct challenge target"
+                    >
+                      <X size={15} />
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* --------------------------------------------------
                   STEP 1: GAME MODE SELECTION (Solo vs Friends)
@@ -724,7 +759,9 @@ export function GamesSetup({ busy, createGame, joinGame }) {
                   ) : (
                     <>
                       <Plus size={18} />
-                      {config.mode === 'friends' ? 'Create a game' : 'Start game'}
+                      {challengeFriend && config.mode === 'friends'
+                        ? `Create & Challenge ${(challengeFriend.name || challengeFriend.username).split(' ')[0]}`
+                        : (config.mode === 'friends' ? 'Create a game' : 'Start game')}
                     </>
                   )}
                 </button>

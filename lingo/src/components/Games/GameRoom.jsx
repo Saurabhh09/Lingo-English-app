@@ -27,6 +27,10 @@ export function GameRoom({
   busy,
   action,
   copyCode,
+  api,
+  notify,
+  socialOverview,
+  refreshSocial,
 }) {
   const [selectedChoice, setSelectedChoice] = useState(null);
   const exitDialogRef = useRef(null);
@@ -102,6 +106,10 @@ export function GameRoom({
           busy={busy}
           action={action}
           copyCode={copyCode}
+          api={api}
+          notify={notify}
+          socialOverview={socialOverview}
+          refreshSocial={refreshSocial}
         />
       </div>
     );

@@ -66,6 +66,7 @@ const originalConfigText = fs.readFileSync(capConfigFile, 'utf8');
 const config = JSON.parse(originalConfigText);
 
 let restored = false;
+let backendProcess = null;
 function restoreConfig() {
   if (restored) return;
   restored = true;
@@ -79,9 +80,14 @@ function restoreConfig() {
   console.log('✅ Config restored.');
 }
 
-process.on('SIGINT', () => { restoreConfig(); process.exit(0); });
-process.on('SIGTERM', () => { restoreConfig(); process.exit(0); });
-process.on('exit', () => { restoreConfig(); });
+function cleanupAll() {
+  try { backendProcess?.kill(); } catch { }
+  restoreConfig();
+}
+
+process.on('SIGINT', () => { cleanupAll(); process.exit(0); });
+process.on('SIGTERM', () => { cleanupAll(); process.exit(0); });
+process.on('exit', () => { cleanupAll(); });
 
 // Enable dev server URL
 config.server = {
@@ -119,12 +125,20 @@ for (const dev of readyDevices) {
 console.log('\n🔥 Real-Time Live Reload active!');
 console.log('Any changes in lingo/src/*.jsx or style.css will instantly update on your phone screen.\n');
 
+const localBackendUp = await fetch('http://127.0.0.1:3000/api/health').then(r => r.ok).catch(() => false);
+if (!localBackendUp) {
+  backendProcess = spawn(process.execPath, [path.join(lingoDir, 'server.mjs')], {
+    cwd: lingoDir,
+    stdio: 'inherit'
+  });
+}
+
 const viteProcess = spawn(process.execPath, [viteBin, '--host'], {
   cwd: lingoDir,
   stdio: 'inherit'
 });
 
 viteProcess.on('exit', (code) => {
-  restoreConfig();
+  cleanupAll();
   process.exit(code || 0);
 });
