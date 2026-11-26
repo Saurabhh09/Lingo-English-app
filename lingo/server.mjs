@@ -2780,6 +2780,18 @@ const isEntryScript = Boolean(process.argv[1] && fileURLToPath(import.meta.url) 
 const shouldListen = !process.env.VERCEL && (isEntryScript || process.env.ISOLATED_TEST);
 
 if (shouldListen) {
+  app.get('/lingo.apk', (_, res, next) => {
+    const candidates = [
+      path.join(root, 'dist', 'lingo.apk'),
+      path.join(root, 'public', 'lingo.apk')
+    ];
+    const apkFile = candidates.find(p => fs.existsSync(p));
+    if (!apkFile) return next();
+    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+    res.setHeader('Content-Disposition', 'attachment; filename="lingo.apk"');
+    res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    return res.sendFile(apkFile);
+  });
   if (process.env.NODE_ENV === 'production' || process.env.ISOLATED_TEST) {
     app.use(express.static(path.join(root, 'dist')));
     app.get('/{*path}', (_, res) => res.sendFile(path.join(root, 'dist/index.html')));
