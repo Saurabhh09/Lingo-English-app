@@ -5,18 +5,19 @@ import { ListeningLab } from './ListeningLab.jsx';
 import { SpeakingStudio } from './SpeakingStudio.jsx';
 import { PronunciationCoach } from './PronunciationCoach.jsx';
 import { AIConversationTutor } from './AIConversationTutor.jsx';
+import { fetchWithSWR, getSyncCache } from '../../services/dataCache.js';
 import './practice.css';
 
 export function PracticeHub({ progress, updateProgress, api }) {
   const [activeTab, setActiveTab] = useState('listening'); // 'listening' | 'speaking' | 'pronunciation' | 'ai'
-  const [catalog, setCatalog] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [catalog, setCatalog] = useState(() => getSyncCache('practice:catalog'));
+  const [loading, setLoading] = useState(() => !getSyncCache('practice:catalog'));
   const [error, setError] = useState('');
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    api('/practice/catalog')
+    if (!catalog) setLoading(true);
+    fetchWithSWR('practice:catalog', () => api('/practice/catalog'), { maxAgeMs: 10 * 60 * 1000 })
       .then(data => {
         if (!active) return;
         setCatalog(data);
@@ -24,7 +25,7 @@ export function PracticeHub({ progress, updateProgress, api }) {
       })
       .catch(err => {
         if (!active) return;
-        setError(err.message || 'Failed to load practice catalog.');
+        if (!catalog) setError(err.message || 'Failed to load practice catalog.');
         setLoading(false);
       });
 

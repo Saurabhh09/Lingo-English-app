@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Users,
   Bell,
@@ -22,6 +22,7 @@ import {
   UserMinus
 } from 'lucide-react';
 import { FriendProfileModal, CommunityDetailModal, CreateCommunityModal } from './SocialModals.jsx';
+import { copyTextReliably, getPublicShareOrigin } from '../../services/speechAudio.js';
 
 export function FriendsPage({
   api,
@@ -45,6 +46,11 @@ export function FriendsPage({
   const [selectedProfileUsername, setSelectedProfileUsername] = useState(null);
   const [selectedCommunityId, setSelectedCommunityId] = useState(null);
   const [showCreateCommunity, setShowCreateCommunity] = useState(false);
+  const searchSeqRef = useRef(0);
+
+  useEffect(() => {
+    setSubTab(initialSubTab);
+  }, [initialSubTab]);
 
   const me = socialOverview?.me || user;
   const friends = socialOverview?.friends || [];
@@ -59,44 +65,51 @@ export function FriendsPage({
   const pendingTotal = incomingRequests.length + communityInvitations.length;
 
   useEffect(() => {
-    refreshSocial?.();
+    if (!socialOverview) refreshSocial?.();
   }, []);
 
   const runSearch = useCallback(async q => {
     const clean = q.trim().replace(/^@+/, '');
+    const seq = ++searchSeqRef.current;
     if (clean.length < 2) {
       setSearchResults([]);
       setSearchError('');
+      setSearching(false);
       return;
     }
     setSearching(true);
     setSearchError('');
     try {
       const res = await api('/social/search?q=' + encodeURIComponent(clean));
+      if (seq !== searchSeqRef.current) return;
       setSearchResults(res?.users || []);
     } catch (e) {
+      if (seq !== searchSeqRef.current) return;
       setSearchResults([]);
       setSearchError(e?.message || 'Unable to search users right now.');
     } finally {
-      setSearching(false);
+      if (seq === searchSeqRef.current) setSearching(false);
     }
   }, [api]);
 
   useEffect(() => {
+    const clean = searchQuery.trim().replace(/^@+/, '');
+    if (clean.length < 2) {
+      setSearchResults([]);
+      setSearchError('');
+      setSearching(false);
+      return undefined;
+    }
     const t = setTimeout(() => {
       if (subTab === 'find') runSearch(searchQuery);
-    }, 260);
+    }, 150);
     return () => clearTimeout(t);
   }, [searchQuery, subTab, runSearch]);
 
-  const personalInviteUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/?invite=${encodeURIComponent(me?.lingoId || '')}`
-    : `?invite=${me?.lingoId || ''}`;
+  const personalInviteUrl = `${getPublicShareOrigin()}/?invite=${encodeURIComponent(me?.lingoId || '')}`;
 
   async function handleCopyInviteLink() {
-    try {
-      await navigator.clipboard?.writeText(personalInviteUrl);
-    } catch { }
+    await copyTextReliably(personalInviteUrl);
     setCopiedLink(true);
     notify?.(`Copied invite ID ${me?.lingoId || ''}!`);
     setTimeout(() => setCopiedLink(false), 2200);
@@ -108,22 +121,34 @@ export function FriendsPage({
       text: `Add me as a friend on Lingo! My Lingo ID is ${me?.lingoId || ''} (or search @${me?.username}).`,
       url: personalInviteUrl
     };
-    if (navigator.share && navigator.canShare?.(shareData)) {
+    if (navigator.share) {
       try {
         await navigator.share(shareData);
         return;
-      } catch { }
+      } catch (err) {
+        if (err?.name === 'AbortError') return;
+      }
     }
     handleCopyInviteLink();
   }
 
   async function handleSendRequest(targetUsername) {
     setBusyId(`req:${targetUsername}`);
+    setSearchResults(prev =>
+      prev.map(u => (u.username === targetUsername ? { ...u, friendStatus: 'request_sent' } : u))
+    );
     try {
       const res = await api('/social/friends/request', { username: targetUsername });
+      const nextStatus = res.status === 'accepted' ? 'friends' : 'request_sent';
+      setSearchResults(prev =>
+        prev.map(u => (u.username === targetUsername ? { ...u, friendStatus: nextStatus } : u))
+      );
       notify?.(res.status === 'accepted' ? 'Friend request accepted!' : 'Friend request sent!');
-      await Promise.all([refreshSocial?.(), runSearch(searchQuery)]);
+      refreshSocial?.().catch(() => { });
     } catch (e) {
+      setSearchResults(prev =>
+        prev.map(u => (u.username === targetUsername ? { ...u, friendStatus: 'not_connected' } : u))
+      );
       notify?.(e.message || 'Could not send request.');
     } finally {
       setBusyId('');
@@ -141,7 +166,7 @@ export function FriendsPage({
             ? 'Request declined.'
             : 'Request cancelled.'
       );
-      await refreshSocial?.();
+      refreshSocial?.().catch(() => { });
     } catch (e) {
       notify?.(e.message || 'Failed to update friend request.');
     } finally {

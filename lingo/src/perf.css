@@ -1,0 +1,135 @@
+/* ==========================================================================
+   Android Mobile WebView Header Alignment & 60fps Performance Rules
+   Scoped strictly to mobile/native optimization without breaking desktop web.
+   ========================================================================== */
+
+html,
+body {
+  background-color: var(--cream, #faf8f0);
+  overscroll-behavior-y: contain;
+}
+
+button,
+a,
+[role='button'],
+.choice-card-item,
+.mobile-nav-btn,
+.web-nav-item,
+.unit-lesson-row,
+.path-node-btn,
+.solo-opt-btn,
+.social-tab-pill,
+.sf-btn,
+.sr-accept,
+.sr-reject {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.modal,
+.lesson-preview-modal,
+.lesson-page-body,
+.notif-modal,
+.friends-tab-panel,
+.social-modal-card {
+  overscroll-behavior: contain;
+}
+
+/* Native Android APK Home Header: clean right-aligned spacing & zero right-edge clipping */
+html[data-platform='native'] .topbar {
+  padding: max(12px, var(--safe-top, 38px)) 14px 12px !important;
+  gap: 8px !important;
+  overflow: visible !important;
+}
+
+html[data-platform='native'] .topbar-actions {
+  gap: 6px !important;
+  margin-left: auto !important;
+  flex-shrink: 0 !important;
+  max-width: calc(100% - 88px);
+}
+
+html[data-platform='native'] .streak-pill,
+html[data-platform='native'] .gem-pill,
+html[data-platform='native'] .gem-currency-pill {
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+  gap: 4px !important;
+}
+
+html[data-platform='native'] .streak-pill span {
+  display: none !important;
+}
+
+/* Native WebView GPU Perf: avoid costly multi-pass backdrop-filter while keeping crisp surfaces */
+html[data-platform='native'] .mobile-nav {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  box-shadow:
+    0 8px 20px rgba(15, 23, 42, 0.14),
+    inset 0 1px 1px rgba(255, 255, 255, 0.95) !important;
+}
+
+html[data-platform='native'] .course-header-sticky {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: rgba(250, 248, 240, 0.98) !important;
+}
+
+html[data-platform='native'] .modal-overlay,
+html[data-platform='native'] .social-modal-overlay,
+html[data-platform='native'] .badge-unlock-overlay,
+html[data-platform='native'] .reward-open-overlay,
+html[data-platform='native'] .confirm-leave-overlay,
+html[data-platform='native'] .lesson-preview-overlay,
+html[data-platform='native'] .solo-countdown-overlay {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: rgba(15, 23, 42, 0.52) !important;
+}
+
+/* Replace costly transition: all with compositor-friendly properties */
+.mobile-nav-btn,
+.web-nav-item,
+.button,
+.choice-card-item,
+.options button,
+.solo-opt-btn,
+.unit-lesson-row,
+.path-node-btn,
+.social-card,
+.badge-card,
+.cefr-level-card,
+.cefr-section-card,
+.practice-subtab-btn,
+.profile-hub-card,
+.goal-options button {
+  transition:
+    transform 0.14s cubic-bezier(0.2, 0.8, 0.3, 1),
+    opacity 0.14s ease,
+    background-color 0.14s ease,
+    border-color 0.14s ease !important;
+}
+
+/* Content-visibility for heavy scrollable sections */
+.achievements-badge-grid,
+.cefr-level-journey-block,
+.reward-history-list,
+.social-cards-stack,
+.library-list,
+.milestones-list {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

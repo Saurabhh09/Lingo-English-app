@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  Clock,
   Check,
   X,
   Sparkles,
@@ -12,6 +11,7 @@ import {
   Timer
 } from 'lucide-react';
 import { Mascot } from '../../Art.jsx';
+import { GameClockTimer } from './GameClockTimer.jsx';
 import { getOrCreateStableShuffle, toOriginalIndex, toDisplayIndex, recordCorrectPositionMetric } from '../../../server/optionShuffler.mjs';
 
 /**
@@ -25,7 +25,6 @@ import { getOrCreateStableShuffle, toOriginalIndex, toDisplayIndex, recordCorrec
 export function SoloGameRoom({
   game,
   user,
-  tick,
   busy,
   action
 }) {
@@ -67,15 +66,6 @@ export function SoloGameRoom({
       return () => clearInterval(interval);
     }
   }, [game.status, game.countdownDeadline, game.serverTime, game.clientReceivedAt]);
-
-  const clockOffset = (game.serverTime && game.clientReceivedAt)
-    ? (game.serverTime - game.clientReceivedAt)
-    : 0;
-  const currentServerTime = (tick || Date.now()) + clockOffset;
-  const totalRemainingSeconds = game.endsAt
-    ? Math.max(0, Math.ceil((game.endsAt - currentServerTime) / 1000))
-    : 0;
-  const formattedTime = `${String(Math.floor(totalRemainingSeconds / 60)).padStart(2, '0')}:${String(totalRemainingSeconds % 60).padStart(2, '0')}`;
 
   const isQuizStage =
     game.status === 'playing' ||
@@ -230,10 +220,12 @@ export function SoloGameRoom({
             {qNumberLabel}
           </span>
 
-          <span className={`solo-clock-pill ${totalRemainingSeconds <= 30 ? 'urgent' : ''}`}>
-            <Clock size={14} />
-            <span>{formattedTime}</span>
-          </span>
+          <GameClockTimer
+            endsAt={game.endsAt}
+            serverTime={game.serverTime}
+            clientReceivedAt={game.clientReceivedAt}
+            className="solo-clock-pill"
+          />
         </header>
 
         {/* Crisp Progress Bar */}

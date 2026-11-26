@@ -1,19 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { X, Lock, Sparkles, Clock, Zap, Target, CheckCircle2, Trophy, ArrowRight, ShieldCheck, BookOpen } from 'lucide-react';
-import { getApiUrl } from '../../apiConfig';
+import { requestApi } from '../../apiConfig.js';
+import { fetchWithSWR, getSyncCache } from '../../services/dataCache.js';
 
 export function LessonPreviewModal({ lesson, onClose, onStartReal, isLocked, prerequisiteName }) {
   if (!lesson) return null;
 
-  const [curriculumData, setCurriculumData] = useState(null);
   const isCheckpoint = lesson.isCheckpoint;
   const targetId = lesson.realLessonId || lesson.id;
+  const [curriculumData, setCurriculumData] = useState(() => (
+    targetId && !isCheckpoint ? getSyncCache(`lesson:${targetId}`) : null
+  ));
 
   useEffect(() => {
     let active = true;
     if (targetId && !isCheckpoint) {
-      fetch(getApiUrl(`/api/curriculum/lessons/${encodeURIComponent(targetId)}`))
-        .then(res => res.ok ? res.json() : null)
+      fetchWithSWR(
+        `lesson:${targetId}`,
+        () => requestApi(`/curriculum/lessons/${encodeURIComponent(targetId)}`),
+        { maxAgeMs: 15 * 60 * 1000 }
+      )
         .then(data => {
           if (active && data) setCurriculumData(data);
         })

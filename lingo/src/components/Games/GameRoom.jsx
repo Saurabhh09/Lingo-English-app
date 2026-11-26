@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ArrowLeft,
-  Clock,
   Check,
   X,
   ArrowRight,
@@ -11,6 +10,7 @@ import { WaitingLobby } from './WaitingLobby.jsx';
 import { CountdownLobby } from './CountdownLobby.jsx';
 import { FinishedGame } from './FinishedGame.jsx';
 import { SpectatorDashboard } from './SpectatorDashboard.jsx';
+import { GameClockTimer } from './GameClockTimer.jsx';
 import { Mascot } from '../../Art.jsx';
 import { getOrCreateStableShuffle, toOriginalIndex, toDisplayIndex, recordCorrectPositionMetric } from '../../../server/optionShuffler.mjs';
 
@@ -23,7 +23,6 @@ import { getOrCreateStableShuffle, toOriginalIndex, toDisplayIndex, recordCorrec
 export function GameRoom({
   game,
   user,
-  tick,
   busy,
   action,
   copyCode,
@@ -41,16 +40,6 @@ export function GameRoom({
 
   const myMember = game.members?.find(m => m.username === user.username);
   const isSpectator = myMember?.role === 'spectator';
-
-  // Derive total game time remaining during active quiz
-  const clockOffset = (game.serverTime && game.clientReceivedAt)
-    ? (game.serverTime - game.clientReceivedAt)
-    : 0;
-  const currentServerTime = (tick || Date.now()) + clockOffset;
-  const totalRemainingSeconds = game.endsAt
-    ? Math.max(0, Math.ceil((game.endsAt - currentServerTime) / 1000))
-    : 0;
-  const formattedTime = `${String(Math.floor(totalRemainingSeconds / 60)).padStart(2, '0')}:${String(totalRemainingSeconds % 60).padStart(2, '0')}`;
 
   const isCountdown = game.status === 'countdown' || game.status === 'starting';
   const isPlayingParticipant = game.status === 'playing' && !isSpectator && !(myMember?.completed || game.completed);
@@ -137,7 +126,6 @@ export function GameRoom({
       <SpectatorDashboard
         game={game}
         user={user}
-        tick={tick}
         busy={busy}
         action={action}
         copyCode={copyCode}
@@ -180,10 +168,11 @@ export function GameRoom({
             {qNumberLabel}
           </span>
 
-          <span className={`solo-clock-pill quiz-timer ${totalRemainingSeconds <= 30 ? 'urgent' : ''}`}>
-            <Clock size={14} />
-            <span>{formattedTime}</span>
-          </span>
+          <GameClockTimer
+            endsAt={game.endsAt}
+            serverTime={game.serverTime}
+            clientReceivedAt={game.clientReceivedAt}
+          />
         </header>
 
         <div className="solo-progress-track" aria-hidden="true">

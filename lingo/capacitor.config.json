@@ -4,9 +4,13 @@
   "webDir": "dist",
   "bundledWebRuntime": false,
   "server": {
-    "androidScheme": "https",
+    "androidScheme": "https"
   },
   "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_lingo",
+      "iconColor": "#58cc02"
+    },
     "SplashScreen": {
       "launchShowDuration": 2000,
       "backgroundColor": "#10b981",

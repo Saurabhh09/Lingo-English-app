@@ -84,8 +84,10 @@ const supabase = connected ? createClient(process.env.SUPABASE_URL, process.env.
 const dataPath = (process.env.NODE_ENV !== 'production' && process.env.DATA_PATH) ? path.resolve(process.env.DATA_PATH) : path.join(root, 'data.json');
 let local = fs.existsSync(dataPath) ? JSON.parse(fs.readFileSync(dataPath, 'utf8')) : { accounts: {}, sessions: {}, progress: {}, games: {}, solo: {} };
 if (!local.solo) local.solo = {};
-const db = { async get(table, id) { if (!supabase) return structuredClone(local[table]?.[id] || null); const { data, error } = await supabase.from('lingo_' + table).select('payload').eq('id', id).maybeSingle(); if (error) throw Error('Database is not ready. Apply supabase/schema.sql.'); return data?.payload || null; }, async set(table, id, payload) { if (supabase) { const { error } = await supabase.from('lingo_' + table).upsert({ id, payload }); if (error) throw Error('Database write failed. Check your Supabase setup.'); } else { if (!local[table]) local[table] = {}; local[table][id] = structuredClone(payload); try { fs.writeFileSync(dataPath + '.tmp', JSON.stringify(local)); fs.renameSync(dataPath + '.tmp', dataPath); } catch { fs.writeFileSync(dataPath, JSON.stringify(local)); } } }, async del(table, id) { if (supabase) { const { error } = await supabase.from('lingo_' + table).delete().eq('id', id); if (error) throw error; } else { if (local[table]) delete local[table][id]; fs.writeFileSync(dataPath, JSON.stringify(local)); } } };
+const db = { async get(table, id) { if (!supabase) return structuredClone(local[table]?.[id] || null); const { data, error } = await supabase.from('lingo_' + table).select('payload').eq('id', id).maybeSingle(); if (error) throw Error('Database is not ready. Apply supabase/schema.sql.'); return data?.payload || null; }, async set(table, id, payload) { if (table === 'accounts' || (table === 'progress' && id !== SOCIAL_STATE_ID)) socialDirectoryCache = null; if (supabase) { const { error } = await supabase.from('lingo_' + table).upsert({ id, payload }); if (error) throw Error('Database write failed. Check your Supabase setup.'); } else { if (!local[table]) local[table] = {}; local[table][id] = structuredClone(payload); try { fs.writeFileSync(dataPath + '.tmp', JSON.stringify(local)); fs.renameSync(dataPath + '.tmp', dataPath); } catch { fs.writeFileSync(dataPath, JSON.stringify(local)); } } }, async del(table, id) { if (table === 'accounts' || (table === 'progress' && id !== SOCIAL_STATE_ID)) socialDirectoryCache = null; if (supabase) { const { error } = await supabase.from('lingo_' + table).delete().eq('id', id); if (error) throw error; } else { if (local[table]) delete local[table][id]; fs.writeFileSync(dataPath, JSON.stringify(local)); } } };
 const SOCIAL_STATE_ID = '__lingo_social_state__';
+let socialDirectoryCache = null;
+const SOCIAL_DIRECTORY_TTL_MS = 8000;
 async function getSocialState() {
   const raw = await db.get('progress', SOCIAL_STATE_ID);
   const s = ensureSocialState(raw);
@@ -94,12 +96,15 @@ async function getSocialState() {
   }
   return s;
 }
-async function saveSocialState(s) {
+async function saveSocialState(s, { syncTables = null } = {}) {
   await db.set('progress', SOCIAL_STATE_ID, s);
-  await syncSocialToSupabase(supabase, s);
+  await syncSocialToSupabase(supabase, s, { tables: syncTables });
 }
 async function listAccountsAndProgress() {
   if (supabase) {
+    if (socialDirectoryCache && (Date.now() - socialDirectoryCache.ts) < SOCIAL_DIRECTORY_TTL_MS) {
+      return socialDirectoryCache.value;
+    }
     const [accRes, progRes] = await Promise.all([
       supabase.from('lingo_accounts').select('id, payload').limit(5000),
       supabase.from('lingo_progress').select('id, payload').neq('id', SOCIAL_STATE_ID).limit(5000)
@@ -119,7 +124,9 @@ async function listAccountsAndProgress() {
       if (!r?.id || !r?.payload) continue;
       progressMap[r.id] = typeof r.payload === 'string' ? JSON.parse(r.payload) : r.payload;
     }
-    return { accountsMap, progressMap };
+    const value = { accountsMap, progressMap };
+    socialDirectoryCache = { ts: Date.now(), value };
+    return value;
   }
   const accountsMap = {};
   for (const [k, v] of Object.entries(local.accounts || {})) {
@@ -300,13 +307,23 @@ if (process.env.NODE_ENV !== 'production') {
     res.json({ ok: true, mocked: false });
   });
 }
+const CACHED_PUBLIC_LEVELS = getPublicLevels();
+const CACHED_PUBLIC_PRACTICE = getPublicPracticeCatalog();
+const CACHED_BADGES_CATALOG = { categories: BADGE_CATEGORIES, badges: BADGE_CATALOG };
+const CACHED_REWARDS_CATALOG = { rewards: REWARD_DEFINITIONS };
 app.get('/api/health', (_, res) => res.json({ status: 'ok', uptime: Math.floor(process.uptime()), timestamp: now(), database: connected ? 'supabase' : 'demo' }));
 app.get('/api/config', (_, res) => res.json({ database: connected ? 'supabase' : 'demo', app: 'Lingo' }));
-app.get('/api/curriculum/levels', (_, res) => res.json(getPublicLevels()));
-app.get('/api/curriculum/lessons/:id', (req, res) => { const l = getPublicLesson(req.params.id); if (!l) return res.status(404).json({ error: 'Lesson not found.' }); res.json(l); });
-app.get('/api/practice/catalog', (_, res) => res.json(getPublicPracticeCatalog()));
-app.get('/api/badges', (_, res) => res.json({ categories: BADGE_CATEGORIES, badges: BADGE_CATALOG }));
-app.get('/api/rewards/catalog', (_, res) => res.json({ rewards: REWARD_DEFINITIONS }));
+app.get('/api/curriculum/levels', (_, res) => { res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=600'); res.json(CACHED_PUBLIC_LEVELS); });
+app.get('/api/curriculum/lessons/batch', (req, res) => {
+  const rawIds = String(req.query.ids || '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 12);
+  if (!rawIds.length) return res.status(400).json({ error: 'Lesson IDs are required.' });
+  res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=600');
+  res.json({ lessons: rawIds.map(id => getPublicLesson(id)).filter(Boolean) });
+});
+app.get('/api/curriculum/lessons/:id', (req, res) => { const l = getPublicLesson(req.params.id); if (!l) return res.status(404).json({ error: 'Lesson not found.' }); res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=600'); res.json(l); });
+app.get('/api/practice/catalog', (_, res) => { res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=600'); res.json(CACHED_PUBLIC_PRACTICE); });
+app.get('/api/badges', (_, res) => { res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=600'); res.json(CACHED_BADGES_CATALOG); });
+app.get('/api/rewards/catalog', (_, res) => { res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=600'); res.json(CACHED_REWARDS_CATALOG); });
 app.get('/api/ai/status', (_, res) => res.json(getAIStatus()));
 app.post('/api/pronunciation/evaluate', route(async (req, res) => {
   const { targetPhrase, spokenTranscript, spokenText, transcript } = req.body;
@@ -1657,8 +1674,11 @@ app.post('/api/social/presence', route(async (req, res) => {
   await locked('social:global', async () => {
     const s = await getSocialState();
     const nowMs = now();
+    const prevSeen = s.presence[req.user.username] || 0;
     s.presence[req.user.username] = nowMs;
-    await saveSocialState(s);
+    if (nowMs - prevSeen > 25000) {
+      await saveSocialState(s, { syncTables: [] });
+    }
 
     const pendingFriendRequests = s.friendRequests.filter(
       r => r.receiverId === req.user.username && r.status === 'pending'
@@ -1670,20 +1690,24 @@ app.post('/api/social/presence', route(async (req, res) => {
       gi => gi.receiverId === req.user.username && gi.status === 'pending'
     );
     let activeGameInv = null;
-    for (const gi of pendingGameInvs) {
-      const g = await db.get('games', gi.gameId);
-      if (g && (g.status === 'waiting' || g.status === 'countdown')) {
-        const activeCount = Object.values(g.members || {}).filter(m => m.role !== 'spectator').length;
-        const senderAcc = await db.get('accounts', gi.senderId);
-        activeGameInv = {
-          ...gi,
-          topic: g.topic,
-          difficulty: g.difficulty,
-          playerCount: activeCount,
-          maxPlayers: MAX_ACTIVE_PLAYERS,
-          senderName: senderAcc?.name || gi.senderId
-        };
-        break;
+    if (pendingGameInvs.length) {
+      const games = await Promise.all(pendingGameInvs.map(gi => db.get('games', gi.gameId)));
+      for (let idx = 0; idx < pendingGameInvs.length; idx++) {
+        const g = games[idx];
+        const gi = pendingGameInvs[idx];
+        if (g && (g.status === 'waiting' || g.status === 'countdown')) {
+          const activeCount = Object.values(g.members || {}).filter(m => m.role !== 'spectator').length;
+          const senderAcc = await db.get('accounts', gi.senderId);
+          activeGameInv = {
+            ...gi,
+            topic: g.topic,
+            difficulty: g.difficulty,
+            playerCount: activeCount,
+            maxPlayers: MAX_ACTIVE_PLAYERS,
+            senderName: senderAcc?.name || gi.senderId
+          };
+          break;
+        }
       }
     }
     const unreadNotifs = s.notifications.filter(
@@ -1724,12 +1748,15 @@ app.post('/api/social/profile', route(async (req, res) => {
 
 app.get('/api/social/overview', route(async (req, res) => {
   await locked('social:global', async () => {
-    const s = await getSocialState();
+    const [s, directory] = await Promise.all([getSocialState(), listAccountsAndProgress()]);
     const nowMs = now();
+    const prevSeen = s.presence[req.user.username] || 0;
     s.presence[req.user.username] = nowMs;
-    await saveSocialState(s);
+    if (nowMs - prevSeen > 25000) {
+      await saveSocialState(s, { syncTables: [] });
+    }
 
-    const { accountsMap, progressMap } = await listAccountsAndProgress();
+    const { accountsMap, progressMap } = directory;
     const me = req.user.username;
 
     const friendNames = getFriendUsernames(s, me).filter(u => !isBlockedBetween(s, me, u));
@@ -1794,10 +1821,16 @@ app.get('/api/social/overview', route(async (req, res) => {
       })
       .filter(Boolean);
 
+    const pendingGameInvsForMe = s.gameInvitations.filter(
+      gi => gi.receiverId === me && gi.status === 'pending'
+    );
+    const loadedGames = pendingGameInvsForMe.length
+      ? await Promise.all(pendingGameInvsForMe.map(gi => db.get('games', gi.gameId)))
+      : [];
     const gameInvitations = [];
-    for (const gi of s.gameInvitations) {
-      if (gi.receiverId !== me || gi.status !== 'pending') continue;
-      const g = await db.get('games', gi.gameId);
+    for (let idx = 0; idx < pendingGameInvsForMe.length; idx++) {
+      const gi = pendingGameInvsForMe[idx];
+      const g = loadedGames[idx];
       if (!g || g.status === 'finished' || g.status === 'playing') {
         continue;
       }
@@ -1921,14 +1954,16 @@ app.post('/api/social/friends/request', route(async (req, res) => {
   const { username, lingoId } = req.body || {};
   await locked('social:global', async () => {
     const s = await getSocialState();
-    const { accountsMap } = await listAccountsAndProgress();
     const me = req.user.username;
 
     let targetAcc = null;
     if (typeof username === 'string' && username.trim()) {
-      targetAcc = accountsMap[username.toLowerCase().trim()];
+      const cleanUname = username.toLowerCase().trim().replace(/^@+/, '');
+      targetAcc = await db.get('accounts', cleanUname);
+      if (targetAcc && !targetAcc.username) targetAcc.username = cleanUname;
     } else if (typeof lingoId === 'string' && lingoId.trim()) {
       const targetId = lingoId.trim().toUpperCase();
+      const { accountsMap } = await listAccountsAndProgress();
       targetAcc = Object.values(accountsMap).find(
         a => (a.lingoId || deriveLingoId(a.username)).toUpperCase() === targetId
       );
@@ -1963,7 +1998,7 @@ app.post('/api/social/friends/request', route(async (req, res) => {
         message: `${req.user.name} accepted your friend request!`,
         relatedEntityId: me
       }, now());
-      await saveSocialState(s);
+      await saveSocialState(s, { syncTables: ['friendships', 'friendRequests', 'notifications'] });
       return res.json({ status: 'accepted', friendUsername: target });
     }
 
@@ -1984,7 +2019,7 @@ app.post('/api/social/friends/request', route(async (req, res) => {
       relatedEntityId: reqObj.id,
       metadata: { senderUsername: me, requestId: reqObj.id }
     }, now());
-    await saveSocialState(s);
+    await saveSocialState(s, { syncTables: ['friendRequests', 'notifications'] });
     res.json({ status: 'pending', request: reqObj });
   });
 }));
@@ -2034,7 +2069,11 @@ app.post('/api/social/friends/requests/:reqId/respond', route(async (req, res) =
     for (const n of s.notifications) {
       if (n.userId === me && n.relatedEntityId === reqId) n.isRead = true;
     }
-    await saveSocialState(s);
+    await saveSocialState(s, {
+      syncTables: action === 'accept'
+        ? ['friendships', 'friendRequests', 'notifications']
+        : ['friendRequests', 'notifications']
+    });
     res.json({ ok: true, request: fr });
   });
 }));

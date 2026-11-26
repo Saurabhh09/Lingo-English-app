@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bot, Send, Mic, Volume2, Sparkles, AlertCircle, Info, CheckCircle2, Loader2, RotateCcw } from 'lucide-react';
+import { speakEnglishText } from '../../services/speechAudio.js';
 
 export function AIConversationTutor({ scenarios = [], api, updateProgress, userCompleted = [] }) {
   const [selectedId, setSelectedId] = useState(scenarios[0]?.id || 'conv_greet_01');
@@ -50,12 +51,7 @@ export function AIConversationTutor({ scenarios = [], api, updateProgress, userC
   }, [messages, busy]);
 
   function speakText(text) {
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const s = new SpeechSynthesisUtterance(text);
-    s.lang = 'en-US';
-    s.rate = 0.85;
-    window.speechSynthesis.speak(s);
+    speakEnglishText(text, { rate: 0.85 });
   }
 
   function handleVoiceInput() {

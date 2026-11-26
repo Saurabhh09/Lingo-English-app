@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Copy, Check, BarChart2, Clock, UserPlus, ChevronRight, Users, Plus, Play, Loader2, Hourglass } from 'lucide-react';
 import { ChallengeInvitePanel } from '../Social/GameInvitePanel.jsx';
+import { copyTextReliably, getPublicShareOrigin } from '../../services/speechAudio.js';
 
 /**
  * WaitingLobby: Redesigned Friends Mode Room Lobby matching the clean Lingo reference:
@@ -35,12 +36,8 @@ export function WaitingLobby({
   async function handleCopy() {
     if (copyCode) {
       await copyCode();
-    } else if (navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(game.code);
-      } catch {
-        // Fallback handled gracefully
-      }
+    } else {
+      await copyTextReliably(game.code);
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 2200);
@@ -50,10 +47,10 @@ export function WaitingLobby({
     const shareData = {
       title: 'Join my English Game on Lingo!',
       text: `Join my English challenge on Lingo! Room code: ${game.code}`,
-      url: window.location.href,
+      url: getPublicShareOrigin(),
     };
 
-    if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+    if (navigator.share) {
       try {
         await navigator.share(shareData);
         setShareSuccess(true);

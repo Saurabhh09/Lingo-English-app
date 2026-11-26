@@ -149,104 +149,125 @@ export function expireStaleInvitations(social, nowMs = Date.now()) {
 /**
  * Best-effort relational sync helper to Supabase tables when SQL migration is applied.
  */
-export async function syncSocialToSupabase(supabase, social) {
+export async function syncSocialToSupabase(supabase, social, { tables = null } = {}) {
   if (!supabase) return;
+  if (Array.isArray(tables) && tables.length === 0) return;
+  const want = name => !Array.isArray(tables) || tables.includes(name);
+  const ops = [];
+
   try {
-    if (social.friendships.length) {
-      await supabase.from('friendships').upsert(
-        social.friendships.map(f => ({
-          id: f.id,
-          user_one_id: f.userOneId,
-          user_two_id: f.userTwoId,
-          created_at: f.createdAt
-        })),
-        { onConflict: 'user_one_id,user_two_id' }
+    if (want('friendships') && social.friendships.length) {
+      ops.push(
+        supabase.from('friendships').upsert(
+          social.friendships.map(f => ({
+            id: f.id,
+            user_one_id: f.userOneId,
+            user_two_id: f.userTwoId,
+            created_at: f.createdAt
+          })),
+          { onConflict: 'user_one_id,user_two_id' }
+        )
       );
     }
-    if (social.friendRequests.length) {
-      await supabase.from('friend_requests').upsert(
-        social.friendRequests.slice(-200).map(r => ({
-          id: r.id,
-          sender_id: r.senderId,
-          receiver_id: r.receiverId,
-          status: r.status,
-          created_at: r.createdAt,
-          responded_at: r.respondedAt || null
-        })),
-        { onConflict: 'id' }
+    if (want('friendRequests') && social.friendRequests.length) {
+      ops.push(
+        supabase.from('friend_requests').upsert(
+          social.friendRequests.slice(-80).map(r => ({
+            id: r.id,
+            sender_id: r.senderId,
+            receiver_id: r.receiverId,
+            status: r.status,
+            created_at: r.createdAt,
+            responded_at: r.respondedAt || null
+          })),
+          { onConflict: 'id' }
+        )
       );
     }
-    if (social.communities.length) {
-      await supabase.from('communities').upsert(
-        social.communities.map(c => ({
-          id: c.id,
-          owner_id: c.ownerId,
-          name: c.name,
-          description: c.description || '',
-          icon_url: c.icon || '🌟',
-          allow_member_invites: !!c.allowMemberInvites,
-          created_at: c.createdAt
-        })),
-        { onConflict: 'id' }
+    if (want('communities') && social.communities.length) {
+      ops.push(
+        supabase.from('communities').upsert(
+          social.communities.map(c => ({
+            id: c.id,
+            owner_id: c.ownerId,
+            name: c.name,
+            description: c.description || '',
+            icon_url: c.icon || '🌟',
+            allow_member_invites: !!c.allowMemberInvites,
+            created_at: c.createdAt
+          })),
+          { onConflict: 'id' }
+        )
       );
     }
-    if (social.communityMembers.length) {
-      await supabase.from('community_members').upsert(
-        social.communityMembers.map(m => ({
-          id: m.id,
-          community_id: m.communityId,
-          user_id: m.userId,
-          role: m.role,
-          joined_at: m.joinedAt
-        })),
-        { onConflict: 'community_id,user_id' }
+    if (want('communityMembers') && social.communityMembers.length) {
+      ops.push(
+        supabase.from('community_members').upsert(
+          social.communityMembers.map(m => ({
+            id: m.id,
+            community_id: m.communityId,
+            user_id: m.userId,
+            role: m.role,
+            joined_at: m.joinedAt
+          })),
+          { onConflict: 'community_id,user_id' }
+        )
       );
     }
-    if (social.communityInvitations.length) {
-      await supabase.from('community_invitations').upsert(
-        social.communityInvitations.slice(-200).map(i => ({
-          id: i.id,
-          community_id: i.communityId,
-          inviter_id: i.inviterId,
-          invitee_id: i.inviteeId,
-          status: i.status,
-          created_at: i.createdAt,
-          responded_at: i.respondedAt || null,
-          expires_at: i.expiresAt || null
-        })),
-        { onConflict: 'id' }
+    if (want('communityInvitations') && social.communityInvitations.length) {
+      ops.push(
+        supabase.from('community_invitations').upsert(
+          social.communityInvitations.slice(-80).map(i => ({
+            id: i.id,
+            community_id: i.communityId,
+            inviter_id: i.inviterId,
+            invitee_id: i.inviteeId,
+            status: i.status,
+            created_at: i.createdAt,
+            responded_at: i.respondedAt || null,
+            expires_at: i.expiresAt || null
+          })),
+          { onConflict: 'id' }
+        )
       );
     }
-    if (social.gameInvitations.length) {
-      await supabase.from('game_invitations').upsert(
-        social.gameInvitations.slice(-200).map(gi => ({
-          id: gi.id,
-          game_id: gi.gameId,
-          sender_id: gi.senderId,
-          receiver_id: gi.receiverId,
-          status: gi.status,
-          created_at: gi.createdAt,
-          responded_at: gi.respondedAt || null,
-          expires_at: gi.expiresAt || null
-        })),
-        { onConflict: 'game_id,receiver_id' }
+    if (want('gameInvitations') && social.gameInvitations.length) {
+      ops.push(
+        supabase.from('game_invitations').upsert(
+          social.gameInvitations.slice(-80).map(gi => ({
+            id: gi.id,
+            game_id: gi.gameId,
+            sender_id: gi.senderId,
+            receiver_id: gi.receiverId,
+            status: gi.status,
+            created_at: gi.createdAt,
+            responded_at: gi.respondedAt || null,
+            expires_at: gi.expiresAt || null
+          })),
+          { onConflict: 'game_id,receiver_id' }
+        )
       );
     }
-    if (social.notifications.length) {
-      await supabase.from('notifications').upsert(
-        social.notifications.slice(0, 200).map(n => ({
-          id: n.id,
-          user_id: n.userId,
-          type: n.type,
-          title: n.title,
-          message: n.message,
-          related_entity_id: n.relatedEntityId || null,
-          metadata: n.metadata || {},
-          is_read: !!n.isRead,
-          created_at: n.createdAt
-        })),
-        { onConflict: 'id' }
+    if (want('notifications') && social.notifications.length) {
+      ops.push(
+        supabase.from('notifications').upsert(
+          social.notifications.slice(0, 80).map(n => ({
+            id: n.id,
+            user_id: n.userId,
+            type: n.type,
+            title: n.title,
+            message: n.message,
+            related_entity_id: n.relatedEntityId || null,
+            metadata: n.metadata || {},
+            is_read: !!n.isRead,
+            created_at: n.createdAt
+          })),
+          { onConflict: 'id' }
+        )
       );
+    }
+    if (ops.length) {
+      await Promise.all(ops);
     }
   } catch {
     // Graceful fallback: db JSON store stays authoritative if relational migration hasn't run yet.

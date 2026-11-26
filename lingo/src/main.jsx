@@ -22,6 +22,7 @@ import './components/Achievements/achievements.css';
 import './components/Rewards/rewards.css';
 import './components/Social/social.css';
 import './web.css';
+import './perf.css';
 import { Learn } from './components/Learn/Learn.jsx';
 import { PracticeHub } from './components/Practice/PracticeHub.jsx';
 import { GamesSetup as Games } from './components/Games/GamesSetup.jsx';
@@ -53,8 +54,11 @@ import {
   syncDailyDeviceReminders,
   sendTestDeviceNotification,
   notifyChallengeSentOnDevice,
-  notifyChallengeAcceptedOnDevice
+  notifyChallengeAcceptedOnDevice,
+  notifyRewardUnlockedOnDevice
 } from './services/deviceNotifications.js';
+import { speakEnglishText, copyTextReliably } from './services/speechAudio.js';
+import { fetchWithSWR, getSyncCache } from './services/dataCache.js';
 
 const pages = ['home', 'learn', 'friends', 'practice', 'games', 'profile', 'reminders'];
 const navPages = ['home', 'learn', 'friends', 'practice', 'games', 'profile'];
@@ -88,7 +92,6 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [fatal, setFatal] = useState('');
   const [game, setGame] = useState(null);
-  const [tick, setTick] = useState(Date.now());
   const [wordIndex, setWordIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedAvatar, setSelectedAvatar] = useState(() => localStorage.getItem('lingo-avatar') || '🌱');
@@ -264,7 +267,9 @@ function App() {
           ? (badgeCatalog.find(b => b.id === rwDef.badgeId) || res.newlyUnlockedBadges?.find(b => b.id === rwDef.badgeId) || null)
           : null;
         if (!res.alreadyClaimed && rwDef) {
-          setRewardQueue(prev => [...prev, { reward: rwDef, xpAdded: res.xpAdded, gemsAdded: res.gemsAdded, badge: primaryBadge }]);
+          const rwEntry = { reward: rwDef, xpAdded: res.xpAdded, gemsAdded: res.gemsAdded, badge: primaryBadge };
+          setRewardQueue(prev => [...prev, rwEntry]);
+          notifyRewardUnlockedOnDevice(rwEntry).catch(() => { });
         } else if (res.alreadyClaimed) {
           notify('This reward chest has already been claimed.');
         }
@@ -285,7 +290,9 @@ function App() {
             ? (badgeCatalog.find(b => b.id === rwDef.badgeId) || res.newlyUnlockedBadges?.find(b => b.id === rwDef.badgeId) || null)
             : null;
           if (!res.alreadyClaimed && rwDef) {
-            setRewardQueue(prev => [...prev, { reward: rwDef, xpAdded: res.xpAdded, gemsAdded: res.gemsAdded, badge: primaryBadge }]);
+            const rwEntry = { reward: rwDef, xpAdded: res.xpAdded, gemsAdded: res.gemsAdded, badge: primaryBadge };
+            setRewardQueue(prev => [...prev, rwEntry]);
+            notifyRewardUnlockedOnDevice(rwEntry).catch(() => { });
           }
         } catch (localErr) {
           notify(localErr?.message || 'Finish the required lessons to unlock this reward.');
@@ -342,6 +349,9 @@ function App() {
     try {
       const ov = await api('/social/overview');
       setSocialOverview(ov);
+      if (user?.username && ov?.notifications?.length) {
+        deliverAppNotificationsToDevice(ov.notifications, user.username).catch(() => { });
+      }
       return ov;
     } catch {
       return null;
@@ -387,6 +397,20 @@ function App() {
       notify('Phone notifications & daily reminders enabled!');
     } else {
       notify('Notification permission was not granted on this device.');
+    }
+  }
+
+  async function handleUpdateNotifPrefs(next) {
+    const saved = saveNotificationPrefs(next);
+    setNotifPrefs(saved);
+    if (saved.enabled && notifPermission !== 'granted') {
+      const granted = await requestDeviceNotificationPermission().catch(() => false);
+      const state = await getDeviceNotificationPermissionState().catch(() => 'prompt');
+      setNotifPermission(state);
+      if (!granted) return;
+    }
+    if (user && progress) {
+      await syncDailyDeviceReminders({ user, progress }).catch(() => { });
     }
   }
 
@@ -666,11 +690,10 @@ function App() {
         }
       }
     };
-    const i = setInterval(update, 1200), clock = setInterval(() => setTick(Date.now()), 250);
+    const i = setInterval(update, 1200);
     return () => {
       cancel = true;
       clearInterval(i);
-      clearInterval(clock);
     };
   }, [game?.code, game?.mode, game?.status]);
 
@@ -681,14 +704,18 @@ function App() {
       return;
     }
     let cancelled = false;
-    const syncSocial = async () => {
-      try {
-        const pres = await api('/social/presence', {});
-        if (!cancelled) setSocialPresence(pres);
-      } catch { }
+    let inFlight = false;
+    let lastOverviewAt = 0;
+    let lastUnread = -1;
+    let lastInviteId = null;
+
+    const pullOverview = async () => {
       try {
         const ov = await api('/social/overview');
+        lastOverviewAt = Date.now();
         if (!cancelled) {
+          lastUnread = ov?.unreadCount || 0;
+          lastInviteId = ov?.gameInvitations?.[0]?.id || null;
           setSocialOverview(ov);
           if (ov?.notifications?.length) {
             deliverAppNotificationsToDevice(ov.notifications, user.username).catch(() => { });
@@ -696,13 +723,51 @@ function App() {
         }
       } catch { }
     };
-    syncSocial();
-    const timer = setInterval(syncSocial, 6000);
+
+    const syncSocial = async (forceOverview = false) => {
+      if (cancelled || inFlight) return;
+      if (typeof document !== 'undefined' && document.hidden && !forceOverview) return;
+      inFlight = true;
+      try {
+        if (forceOverview || page === 'friends' || (Date.now() - lastOverviewAt) > 15000) {
+          await pullOverview();
+        } else {
+          const pres = await api('/social/presence', {});
+          if (!cancelled) {
+            setSocialPresence(pres);
+            const curUnread = pres?.unreadCount || 0;
+            const curInviteId = pres?.latestGameInvite?.id || null;
+            if ((lastUnread >= 0 && curUnread > lastUnread) || (curInviteId && curInviteId !== lastInviteId)) {
+              await pullOverview();
+            } else {
+              lastUnread = curUnread;
+              lastInviteId = curInviteId;
+            }
+          }
+        }
+      } catch { }
+      finally {
+        inFlight = false;
+      }
+    };
+
+    syncSocial(true);
+    const pollMs = isNative ? 3500 : 6000;
+    const timer = setInterval(() => syncSocial(false), pollMs);
+    const onResume = () => {
+      if (typeof document === 'undefined' || !document.hidden) {
+        syncSocial(true);
+      }
+    };
+    window.addEventListener('focus', onResume);
+    document.addEventListener('visibilitychange', onResume);
     return () => {
       cancelled = true;
       clearInterval(timer);
+      window.removeEventListener('focus', onResume);
+      document.removeEventListener('visibilitychange', onResume);
     };
-  }, [user?.username, page]);
+  }, [user?.username, page, isNative]);
 
   useEffect(() => {
     if (!user) return;
@@ -739,16 +804,26 @@ function App() {
   ]);
 
   async function updateGoal(goal) {
+    const prev = progress;
+    setProgress(p => (p ? { ...p, goal } : p));
+    setModal(null);
+    notify('Daily goal updated. You’ve got this!');
     try {
       setProgress(await api('/progress/goal', { goal }));
-      setModal(null);
-      notify('Daily goal updated. You’ve got this!');
     } catch (e) {
+      if (prev) setProgress(prev);
       notify(e.message);
     }
   }
 
   async function saveWord(w = word.word) {
+    const prev = progress;
+    const exists = (progress?.saved || []).includes(w);
+    const optimisticSaved = exists
+      ? (progress?.saved || []).filter(item => item !== w)
+      : [...(progress?.saved || []), w];
+    setProgress(p => (p ? { ...p, saved: optimisticSaved } : p));
+    notify(!exists ? 'Added to your word library!' : 'Removed from your library.');
     try {
       const res = await api('/progress/word', { word: w });
       const { newlyUnlockedBadges, ...p } = res || {};
@@ -756,8 +831,8 @@ function App() {
       if (Array.isArray(newlyUnlockedBadges) && newlyUnlockedBadges.length) {
         enqueueUnlockedBadges(newlyEarnedWithMeta(newlyUnlockedBadges));
       }
-      notify((p.saved || []).includes(w) ? 'Added to your word library!' : 'Removed from your library.');
     } catch (e) {
+      if (prev) setProgress(prev);
       notify(e.message);
     }
   }
@@ -770,15 +845,10 @@ function App() {
   }
 
   function speak(w = word.word) {
-    if (!('speechSynthesis' in window)) {
-      notify('Your browser doesn’t support pronunciation playback.');
-      return;
-    }
-    window.speechSynthesis.cancel();
-    const s = new SpeechSynthesisUtterance(w);
-    s.lang = 'en-US';
-    s.rate = 0.8;
-    window.speechSynthesis.speak(s);
+    speakEnglishText(w, {
+      rate: 0.8,
+      onUnavailable: () => notify(`Pronunciation: “${w}”`)
+    });
   }
 
   const activeLesson = lessons.find(l => !progress?.completed.includes(l.id)) || lessons[0];
@@ -943,12 +1013,8 @@ function App() {
   }
 
   async function copyCode() {
-    try {
-      await navigator.clipboard.writeText(game.code);
-      notify('Game code copied!');
-    } catch {
-      notify('Your game code is ' + game.code);
-    }
+    const ok = await copyTextReliably(game.code);
+    notify(ok ? 'Game code copied!' : 'Your game code is ' + game.code);
   }
 
   const headings = {
@@ -1316,11 +1382,13 @@ function App() {
                   <span className="topbar-bell-count">{socialUnreadCount > 9 ? '9+' : socialUnreadCount}</span>
                 )}
               </button>
-              {/* Profile Avatar */}
-              <button className="header-profile" onClick={() => navigate('profile')} aria-label="Account">
-                <span className={`avatar small ${avatarColor}`}>{selectedAvatar}</span>
-                <ChevronDown size={15} />
-              </button>
+              {/* Profile Avatar (Hidden on Mobile App header where Profile lives in bottom dock) */}
+              {!isNative && (
+                <button className="header-profile" onClick={() => navigate('profile')} aria-label="Account">
+                  <span className={`avatar small ${avatarColor}`}>{selectedAvatar}</span>
+                  <ChevronDown size={15} />
+                </button>
+              )}
             </div>
           </header>
         )}
@@ -1574,12 +1642,11 @@ function App() {
             {page === 'games' && (
               game ? (
                 game.mode === 'solo' ? (
-                  <SoloGameRoom game={game} user={user} tick={tick} busy={busy} action={gameAction} />
+                  <SoloGameRoom game={game} user={user} busy={busy} action={gameAction} />
                 ) : (
                   <GameRoom
                     game={game}
                     user={user}
-                    tick={tick}
                     busy={busy}
                     action={gameAction}
                     copyCode={copyCode}
@@ -1896,7 +1963,7 @@ function App() {
                 progress={progress}
                 notifPrefs={notifPrefs}
                 notifPermission={notifPermission}
-                onUpdatePrefs={next => setNotifPrefs(saveNotificationPrefs(next))}
+                onUpdatePrefs={handleUpdateNotifPrefs}
                 onEnableDeviceAlerts={handleEnableDeviceAlerts}
                 onSendTestAlert={handleSendTestAlert}
                 onBack={() => navigate('profile')}
@@ -2429,12 +2496,7 @@ function Lesson({ lesson, api, updateProgress, onCompleteCheckpoint, savedWords 
   const exerciseTimesRef = useRef([]);
 
   function speakPrompt(text) {
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const s = new SpeechSynthesisUtterance(text);
-    s.lang = 'en-US';
-    s.rate = 0.8;
-    window.speechSynthesis.speak(s);
+    speakEnglishText(text, { rate: 0.8 });
   }
 
   useEffect(() => {
@@ -2457,7 +2519,9 @@ function Lesson({ lesson, api, updateProgress, onCompleteCheckpoint, savedWords 
     if (lesson.isCheckpoint) {
       const info = getCheckpointUnitLessons(lesson.id);
       const unitIds = info?.precedingRealIds?.length ? info.precedingRealIds : ['hello', 'everyday', 'sentences'];
-      Promise.all(unitIds.map(id => api('/curriculum/lessons/' + encodeURIComponent(id)).catch(() => null)))
+      api('/curriculum/lessons/batch?ids=' + encodeURIComponent(unitIds.join(',')))
+        .then(res => Array.isArray(res?.lessons) ? res.lessons : [])
+        .catch(() => Promise.all(unitIds.map(id => fetchWithSWR(`lesson:${id}`, () => api('/curriculum/lessons/' + encodeURIComponent(id)), { maxAgeMs: 15 * 60 * 1000 }).catch(() => null))))
         .then(loaded => {
           if (!active) return;
           const valid = loaded.filter(d => d && Array.isArray(d.exercises) && d.exercises.length);
@@ -2521,7 +2585,18 @@ function Lesson({ lesson, api, updateProgress, onCompleteCheckpoint, savedWords 
       return;
     }
 
-    api('/curriculum/lessons/' + encodeURIComponent(targetId))
+    const cachedLesson = getSyncCache(`lesson:${targetId}`);
+    if (cachedLesson?.id) {
+      setCurriculum(cachedLesson);
+      setLifecycle('ready');
+      setLoading(false);
+    }
+
+    fetchWithSWR(
+      `lesson:${targetId}`,
+      () => api('/curriculum/lessons/' + encodeURIComponent(targetId)),
+      { maxAgeMs: 15 * 60 * 1000 }
+    )
       .then(data => {
         if (!active) return;
         if (!data || !data.id) {
@@ -2535,8 +2610,10 @@ function Lesson({ lesson, api, updateProgress, onCompleteCheckpoint, savedWords 
       })
       .catch(err => {
         if (!active) return;
-        setApiError(err.message || 'Failed to load lesson curriculum.');
-        setLifecycle('error');
+        if (!cachedLesson) {
+          setApiError(err.message || 'Failed to load lesson curriculum.');
+          setLifecycle('error');
+        }
         setLoading(false);
       });
 
