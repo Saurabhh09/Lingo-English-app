@@ -2780,18 +2780,45 @@ const isEntryScript = Boolean(process.argv[1] && fileURLToPath(import.meta.url) 
 const shouldListen = !process.env.VERCEL && (isEntryScript || process.env.ISOLATED_TEST);
 
 if (shouldListen) {
-  app.get('/lingo.apk', (_, res, next) => {
+  const readApkManifest = () => {
+    const manifestCandidates = [
+      path.join(root, 'releases', 'apk-manifest.json'),
+      path.join(root, 'dist', 'apk-manifest.json')
+    ];
+    const file = manifestCandidates.find(p => fs.existsSync(p));
+    if (!file) return null;
+    try {
+      return { file, data: JSON.parse(fs.readFileSync(file, 'utf8')) };
+    } catch {
+      return null;
+    }
+  };
+  const sendApkRelease = (requestedFilename, res, next) => {
+    const loaded = readApkManifest();
+    const downloadFilename = loaded?.data?.downloadFilename || 'lingo.apk';
+    if (requestedFilename && requestedFilename !== downloadFilename) {
+      return next();
+    }
     const candidates = [
-      path.join(root, 'dist', 'lingo.apk'),
-      path.join(root, 'public', 'lingo.apk')
+      path.join(root, 'releases', 'lingo.apk'),
+      path.join(root, 'dist', 'downloads', downloadFilename)
     ];
     const apkFile = candidates.find(p => fs.existsSync(p));
     if (!apkFile) return next();
     res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-    res.setHeader('Content-Disposition', 'attachment; filename="lingo.apk"');
-    res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    res.setHeader('Content-Disposition', `attachment; filename="${downloadFilename}"`);
+    res.setHeader('Cache-Control', 'no-store, max-age=0, must-revalidate');
     return res.sendFile(apkFile);
+  };
+  app.get('/apk-manifest.json', (_, res, next) => {
+    const loaded = readApkManifest();
+    if (!loaded) return next();
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store, max-age=0, must-revalidate');
+    return res.sendFile(loaded.file);
   });
+  app.get('/downloads/:filename', (req, res, next) => sendApkRelease(req.params.filename, res, next));
+  app.get('/lingo.apk', (_, res, next) => sendApkRelease(null, res, next));
   if (process.env.NODE_ENV === 'production' || process.env.ISOLATED_TEST) {
     app.use(express.static(path.join(root, 'dist')));
     app.get('/{*path}', (_, res) => res.sendFile(path.join(root, 'dist/index.html')));

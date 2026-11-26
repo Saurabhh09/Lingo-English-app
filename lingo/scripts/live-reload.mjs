@@ -2,6 +2,7 @@ import { execSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertProductionCapacitorConfig } from './apkConfigGuard.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -61,23 +62,22 @@ try {
   console.warn('⚠️  Could not run adb reverse:', err.message);
 }
 
-// Backup capacitor config
+// Validate production Capacitor config and keep it untouched during USB live-reload
 const originalConfigText = fs.readFileSync(capConfigFile, 'utf8');
 const config = JSON.parse(originalConfigText);
+assertProductionCapacitorConfig(config, 'lingo/capacitor.config.json');
 
 let restored = false;
 let backendProcess = null;
 function restoreConfig() {
   if (restored) return;
   restored = true;
-  console.log('\n🔄 Restoring production Capacitor config...');
+  console.log('\n🔄 Restoring production Android assets Capacitor config...');
   try {
-    fs.writeFileSync(capConfigFile, originalConfigText, 'utf8');
-    if (fs.existsSync(androidAssetsConfig)) {
-      fs.writeFileSync(androidAssetsConfig, originalConfigText, 'utf8');
-    }
+    fs.mkdirSync(path.dirname(androidAssetsConfig), { recursive: true });
+    fs.writeFileSync(androidAssetsConfig, originalConfigText, 'utf8');
   } catch (e) { }
-  console.log('✅ Config restored.');
+  console.log('✅ Android assets Capacitor config restored to production.');
 }
 
 function cleanupAll() {
@@ -89,19 +89,19 @@ process.on('SIGINT', () => { cleanupAll(); process.exit(0); });
 process.on('SIGTERM', () => { cleanupAll(); process.exit(0); });
 process.on('exit', () => { cleanupAll(); });
 
-// Enable dev server URL
-config.server = {
-  ...config.server,
-  url: 'http://localhost:5173',
-  cleartext: true
+// Patch ONLY android/app/src/main/assets/capacitor.config.json (never tracked lingo/capacitor.config.json)
+const liveConfig = {
+  ...config,
+  server: {
+    ...config.server,
+    url: 'http://localhost:5173',
+    cleartext: true
+  }
 };
-const liveConfigText = JSON.stringify(config, null, 2);
-fs.writeFileSync(capConfigFile, liveConfigText, 'utf8');
-if (fs.existsSync(androidAssetsConfig)) {
-  fs.writeFileSync(androidAssetsConfig, liveConfigText, 'utf8');
-}
+fs.mkdirSync(path.dirname(androidAssetsConfig), { recursive: true });
+fs.writeFileSync(androidAssetsConfig, JSON.stringify(liveConfig, null, 2), 'utf8');
 
-console.log('⚡ Synced live-reload configuration to Android assets.');
+console.log('⚡ Staged temporary live-reload configuration in Android assets only (tracked config untouched).');
 
 // Build and install the live-reload APK
 console.log('📦 Compiling APK with live-reload connection...');

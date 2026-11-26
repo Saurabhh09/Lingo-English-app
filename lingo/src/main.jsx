@@ -59,6 +59,7 @@ import {
 } from './services/deviceNotifications.js';
 import { speakEnglishText, copyTextReliably } from './services/speechAudio.js';
 import { fetchWithSWR, getSyncCache } from './services/dataCache.js';
+import defaultApkManifest from '../releases/apk-manifest.json';
 
 const pages = ['home', 'learn', 'friends', 'practice', 'games', 'profile', 'reminders'];
 const navPages = ['home', 'learn', 'friends', 'practice', 'games', 'profile'];
@@ -113,7 +114,22 @@ function App() {
   const [pendingChallengeTarget, setPendingChallengeTarget] = useState(null);
   const [notifPrefs, setNotifPrefs] = useState(() => getNotificationPrefs());
   const [notifPermission, setNotifPermission] = useState('prompt');
+  const [apkRelease, setApkRelease] = useState(defaultApkManifest);
   const seenBadgeIdsRef = useRef(new Set());
+
+  useEffect(() => {
+    if (isNativePlatform()) return;
+    let cancelled = false;
+    fetch(`/apk-manifest.json?t=${Date.now()}`, { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (!cancelled && data && typeof data.downloadPath === 'string' && typeof data.downloadFilename === 'string') {
+          setApkRelease(data);
+        }
+      })
+      .catch(() => { });
+    return () => { cancelled = true; };
+  }, []);
 
   const enqueueUnlockedBadges = list => {
     if (!Array.isArray(list) || !list.length) return;
@@ -1361,10 +1377,10 @@ function App() {
               {/* Download App Icon (Web Home Header Only) */}
               {!isNative && page === 'home' && (
                 <a
-                  href="/lingo.apk?v=20261126-3"
-                  download="lingo.apk"
+                  href={`${apkRelease?.downloadPath || '/lingo.apk'}?v=${apkRelease?.sha256 ? apkRelease.sha256.slice(0, 12) : (apkRelease?.versionCode || 1)}`}
+                  download={apkRelease?.downloadFilename || 'lingo.apk'}
                   className="topbar-download-btn"
-                  title="Download Android App (APK)"
+                  title={`Download Android App v${apkRelease?.versionName || '1.0'} (APK)`}
                   aria-label="Download Android app"
                 >
                   <Download size={16} />

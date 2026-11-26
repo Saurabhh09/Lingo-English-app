@@ -8,9 +8,10 @@
   ],
   "scripts": {
     "dev": "npm --prefix lingo run dev",
-    "build": "npm --prefix lingo run build && node -e \"import('node:fs').then(fs => { if (fs.existsSync('lingo/dist')) fs.cpSync('lingo/dist', 'dist', { recursive: true }); })\"",
+    "build": "npm --prefix lingo run build && node -e \"import('node:fs').then(fs => { fs.rmSync('dist', { recursive: true, force: true }); if (fs.existsSync('lingo/dist')) fs.cpSync('lingo/dist', 'dist', { recursive: true }); })\"",
     "build:mobile": "npm --prefix lingo run build:mobile",
     "build:apk": "npm --prefix lingo run build:apk",
+    "deploy:apk": "npm --prefix lingo run deploy:apk",
     "adb:devices": "adb devices",
     "app:install": "node lingo/scripts/install-device.mjs",
     "app:dev": "node lingo/scripts/live-reload.mjs",

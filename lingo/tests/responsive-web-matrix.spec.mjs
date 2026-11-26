@@ -108,8 +108,8 @@ for (const vp of VIEWPORTS) {
     // Web Home Header Download Icon (not on other screens, not on Android)
     const headerDl = page.locator('.topbar-download-btn');
     await expect(headerDl).toBeVisible();
-    await expect(headerDl).toHaveAttribute('href', '/lingo.apk');
-    await expect(headerDl).toHaveAttribute('download', 'lingo.apk');
+    await expect(headerDl).toHaveAttribute('href', /^\/downloads\/lingo-v[\d.]+\.apk\?v=[a-zA-Z0-9]+$/);
+    await expect(headerDl).toHaveAttribute('download', /^lingo-v[\d.]+\.apk$/);
 
     // Home
     await assertCleanViewportMetrics(page, `${vp.name}/home`, vp.isDesktop);
