@@ -1,4 +1,25 @@
+import groovy.json.JsonSlurper
+
 apply plugin: 'com.android.application'
+
+def lingoVersionCode = 1
+def lingoVersionName = "1.0"
+def manifestFile = file("../../releases/apk-manifest.json")
+if (manifestFile.exists()) {
+    def parsedManifest = new JsonSlurper().parse(manifestFile)
+    if (parsedManifest?.versionCode) {
+        lingoVersionCode = parsedManifest.versionCode as int
+    }
+    if (parsedManifest?.versionName) {
+        lingoVersionName = parsedManifest.versionName.toString()
+    }
+}
+if (project.hasProperty("lingoVersionCode")) {
+    lingoVersionCode = project.property("lingoVersionCode").toString().toInteger()
+}
+if (project.hasProperty("lingoVersionName")) {
+    lingoVersionName = project.property("lingoVersionName").toString()
+}
 
 android {
     namespace = "com.lingoplay.app"
@@ -7,8 +28,8 @@ android {
         applicationId "com.lingoplay.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode lingoVersionCode
+        versionName lingoVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

@@ -4,9 +4,10 @@
   "type": "module",
   "scripts": {
     "dev": "node server.mjs",
-    "build": "vite build",
+    "build": "vite build && node scripts/stage-web-apk.mjs",
     "build:mobile": "vite build --mode production && node ./node_modules/@capacitor/cli/bin/capacitor sync android",
-    "build:apk": "npm run build:mobile && node scripts/build-apk.mjs",
+    "build:apk": "node scripts/build-apk.mjs",
+    "deploy:apk": "node scripts/deploy-apk.mjs",
     "adb:devices": "adb devices",
     "app:install": "node scripts/install-device.mjs",
     "app:dev": "node scripts/live-reload.mjs",
