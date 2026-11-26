@@ -5,9 +5,10 @@ import {
   Search, Flame, ChevronDown, ChevronRight, ChevronLeft, Check, Plus, X, Lock,
   Play, Volume2, Bookmark, Clock, Users, Copy, Trophy, Sparkles, Target, LogOut,
   Settings, CheckCircle2, Loader2, BarChart3, Leaf, Zap, Globe, RotateCcw,
-  GraduationCap, Info, ShieldCheck, Heart, User, Edit3, Smartphone, Download, Gem
+  GraduationCap, Info, ShieldCheck, Heart, User, Edit3, Smartphone, Download, Gem, Bell, CalendarClock, BellRing
 } from 'lucide-react';
 import { getApiUrl, isNativePlatform, requestApi } from './apiConfig.js';
+import { isNativeUI } from './platform.js';
 import {
   BookArt, GameArt, TopicArt, Sprout, Mascot,
   AppleIllustration, CupIllustration, DogIllustration, CatIllustration
@@ -19,11 +20,15 @@ import './components/Learn/learn.css';
 import './components/Games/games.css';
 import './components/Achievements/achievements.css';
 import './components/Rewards/rewards.css';
+import './components/Social/social.css';
 import { Learn } from './components/Learn/Learn.jsx';
 import { PracticeHub } from './components/Practice/PracticeHub.jsx';
 import { GamesSetup as Games } from './components/Games/GamesSetup.jsx';
 import { GameRoom } from './components/Games/GameRoom.jsx';
 import { SoloGameRoom } from './components/Games/SoloGameRoom.jsx';
+import { FriendsPage } from './components/Social/FriendsPage.jsx';
+import { NotificationsModal } from './components/Social/SocialModals.jsx';
+import { RemindersSettingsPage } from './components/Social/RemindersSettingsPage.jsx';
 import { BadgeUnlockModal } from './components/Achievements/BadgeUnlockModal.jsx';
 import { AchievementsSection } from './components/Achievements/AchievementsSection.jsx';
 import { BadgeArtwork } from './components/Achievements/BadgeArtwork.jsx';
@@ -34,8 +39,22 @@ import { evaluateAchievements } from '../server/achievementEngine.mjs';
 import { REWARD_BY_ID } from '../server/rewardDefinitions.mjs';
 import { evaluateRewards, claimReward as claimRewardLocal } from '../server/rewardEngine.mjs';
 import { getOrCreateStableShuffle, clearStableShufflesByPrefix, toOriginalIndex, toDisplayIndex, recordCorrectPositionMetric } from '../server/optionShuffler.mjs';
+import { buildPersonalizedDailyReminders } from '../server/reminderEngine.mjs';
+import {
+  getNotificationPrefs,
+  saveNotificationPrefs,
+  getDeviceNotificationPermissionState,
+  requestDeviceNotificationPermission,
+  ensureDeviceNotificationSetup,
+  dispatchDeviceNotification,
+  deliverAppNotificationsToDevice,
+  syncDailyDeviceReminders,
+  sendTestDeviceNotification,
+  notifyChallengeSentOnDevice,
+  notifyChallengeAcceptedOnDevice
+} from './services/deviceNotifications.js';
 
-const pages = ['home', 'learn', 'practice', 'games', 'profile'];
+const pages = ['home', 'learn', 'friends', 'practice', 'games', 'profile', 'reminders'];
 const words = [
   { word: 'Serendipity', phonetic: '/ˌser.ənˈdɪp.ə.ti/', type: 'noun', meaning: 'The happy chance of finding something wonderful when you weren’t looking for it.', example: 'Finding this little café was pure serendipity.' },
   { word: 'Resilient', phonetic: '/rɪˈzɪl.i.ənt/', type: 'adjective', meaning: 'Able to recover and feel strong again after a difficulty.', example: 'She stayed resilient through every challenge.' },
@@ -74,6 +93,14 @@ function App() {
   const [selectedBadgeDetail, setSelectedBadgeDetail] = useState(null);
   const [rewardQueue, setRewardQueue] = useState([]);
   const [claimingRewardId, setClaimingRewardId] = useState(null);
+  const [socialOverview, setSocialOverview] = useState(null);
+  const [socialPresence, setSocialPresence] = useState(null);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [friendsSubTab, setFriendsSubTab] = useState('friends');
+  const [dismissedInviteId, setDismissedInviteId] = useState('');
+  const [pendingChallengeTarget, setPendingChallengeTarget] = useState(null);
+  const [notifPrefs, setNotifPrefs] = useState(() => getNotificationPrefs());
+  const [notifPermission, setNotifPermission] = useState('prompt');
   const seenBadgeIdsRef = useRef(new Set());
 
   const enqueueUnlockedBadges = list => {
@@ -84,9 +111,18 @@ function App() {
       for (const item of list) {
         if (!item?.id || existingIds.has(item.id)) continue;
         const catalogMeta = badgeCatalog.find(b => b.id === item.id) || BADGE_CATALOG.find(b => b.id === item.id) || {};
-        additions.push({ ...catalogMeta, ...item });
+        const merged = { ...catalogMeta, ...item };
+        additions.push(merged);
         existingIds.add(item.id);
         seenBadgeIdsRef.current.add(item.id);
+        dispatchDeviceNotification({
+          uniqueKey: `badge:${item.id}`,
+          title: `Badge Unlocked: ${merged.name || 'New Achievement'}!`,
+          body: merged.description || 'Check your Profile to view your badge.',
+          channel: 'lingo-social',
+          category: 'achievements',
+          extra: { route: 'profile' }
+        }).catch(() => { });
       }
       return additions.length ? [...prev, ...additions] : prev;
     });
@@ -264,7 +300,7 @@ function App() {
     toastTimer.current = setTimeout(() => setToast(''), 3500);
   };
 
-  const isNative = isNativePlatform();
+  const isNative = isNativeUI();
 
   async function api(url, body, method) {
     return requestApi(url, { body, method, token: token.current });
@@ -289,7 +325,88 @@ function App() {
     }
     localStorage.removeItem('lingo-game');
     localStorage.removeItem('lingo-solo');
+    refreshSocial().catch(() => { });
   };
+
+  async function refreshSocial() {
+    if (!token.current) return null;
+    try {
+      const ov = await api('/social/overview');
+      setSocialOverview(ov);
+      return ov;
+    } catch {
+      return null;
+    }
+  }
+
+  function handleJoinGameFromInvite(joinedGame, meta = {}) {
+    if (!joinedGame?.code) return;
+    setGame(joinedGame);
+    localStorage.setItem('lingo-game', joinedGame.code);
+    setModal(null);
+    setNotifOpen(false);
+    navigate('games');
+    notify('Joined game lobby!');
+    notifyChallengeAcceptedOnDevice({
+      senderName: meta.senderName || joinedGame.host || 'Friend',
+      topic: joinedGame.topic || 'English Match',
+      gameCode: joinedGame.code
+    }).catch(() => { });
+    refreshSocial().catch(() => { });
+  }
+
+  function handleChallengeFriend(friend) {
+    if (!friend?.username) return;
+    if (game?.status === 'finished') {
+      setGame(null);
+      localStorage.removeItem('lingo-game');
+    }
+    setPendingChallengeTarget(friend);
+    setModal(null);
+    navigate('games');
+    notify(`Choose CEFR level & topic to challenge ${friend.name || friend.username}!`);
+  }
+
+  async function handleEnableDeviceAlerts() {
+    const granted = await requestDeviceNotificationPermission();
+    const state = await getDeviceNotificationPermissionState();
+    setNotifPermission(state);
+    if (granted) {
+      const next = saveNotificationPrefs({ ...notifPrefs, enabled: true });
+      setNotifPrefs(next);
+      if (user && progress) await syncDailyDeviceReminders({ user, progress });
+      notify('Phone notifications & daily reminders enabled!');
+    } else {
+      notify('Notification permission was not granted on this device.');
+    }
+  }
+
+  async function handleSendTestAlert() {
+    const res = await sendTestDeviceNotification({ user, progress });
+    const state = await getDeviceNotificationPermissionState();
+    setNotifPermission(state);
+    if (res.ok) notify('Test notification sent to your status bar!');
+    else notify('Allow notification permissions in device settings to test status-bar alerts.');
+  }
+
+  async function handleQuickRespondGameInvite(invId, action) {
+    try {
+      const invObj = socialPresence?.latestGameInvite?.id === invId
+        ? socialPresence.latestGameInvite
+        : socialOverview?.gameInvitations?.find(x => x.id === invId);
+      const res = await api(`/games/invites/${encodeURIComponent(invId)}/respond`, { action });
+      if (action === 'accept' && res?.game) {
+        handleJoinGameFromInvite(res.game, { senderName: invObj?.senderName });
+      } else {
+        setDismissedInviteId(invId);
+        notify('Challenge declined.');
+      }
+      refreshSocial().catch(() => { });
+    } catch (e) {
+      notify(e.message || 'Unable to respond to challenge.');
+      refreshSocial().catch(() => { });
+    }
+  }
 
   async function initialize() {
     try {
@@ -325,6 +442,14 @@ function App() {
             if (Array.isArray(res?.badges) && res.badges.length) setBadgeCatalog(res.badges);
           })
           .catch(() => { });
+        refreshSocial().catch(() => { });
+        try {
+          const params = new URLSearchParams(window.location.search);
+          if (params.get('invite')) {
+            setFriendsSubTab('find');
+            setPage('friends');
+          }
+        } catch { }
         const soloStored = localStorage.getItem('lingo-solo');
         if (soloStored) {
           try {
@@ -483,6 +608,70 @@ function App() {
     };
   }, [game?.code, game?.mode, game?.status]);
 
+  useEffect(() => {
+    if (!user) {
+      setSocialOverview(null);
+      setSocialPresence(null);
+      return;
+    }
+    let cancelled = false;
+    const syncSocial = async () => {
+      try {
+        const pres = await api('/social/presence', {});
+        if (!cancelled) setSocialPresence(pres);
+      } catch { }
+      try {
+        const ov = await api('/social/overview');
+        if (!cancelled) {
+          setSocialOverview(ov);
+          if (ov?.notifications?.length) {
+            deliverAppNotificationsToDevice(ov.notifications, user.username).catch(() => { });
+          }
+        }
+      } catch { }
+    };
+    syncSocial();
+    const timer = setInterval(syncSocial, 6000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [user?.username, page]);
+
+  useEffect(() => {
+    if (!user) return;
+    ensureDeviceNotificationSetup({
+      onAction: extra => {
+        if (extra?.route === 'friends') navigate('friends');
+        else if (extra?.route === 'games') navigate('games');
+        else if (extra?.route === 'profile') navigate('profile');
+        else if (extra?.route === 'practice') navigate('practice');
+        else if (extra?.route === 'learn') navigate('learn');
+      }
+    }).then(state => setNotifPermission(state)).catch(() => { });
+    getDeviceNotificationPermissionState().then(setNotifPermission).catch(() => { });
+  }, [user?.username]);
+
+  useEffect(() => {
+    if (!user || !progress) return;
+    syncDailyDeviceReminders({ user, progress }).catch(() => { });
+  }, [
+    user?.username,
+    user?.name,
+    progress?.completed?.length,
+    progress?.streak,
+    progress?.todayWords,
+    progress?.goal,
+    progress?.xp,
+    notifPrefs.enabled,
+    notifPrefs.journeyHour,
+    notifPrefs.journeyMinute,
+    notifPrefs.motivationHour,
+    notifPrefs.motivationMinute,
+    notifPrefs.categories?.dailyJourney,
+    notifPrefs.categories?.dailyMotivation
+  ]);
+
   async function updateGoal(goal) {
     try {
       setProgress(await api('/progress/goal', { goal }));
@@ -620,9 +809,30 @@ function App() {
         notify('Solo challenge starting in 10 seconds!');
       } else {
         const g = await api('/games', settings);
-        setGame(g);
-        localStorage.setItem('lingo-game', g.code);
-        notify('Your room is ready. Invite a friend!');
+        let finalGame = g;
+        let invitedMsg = 'Your room is ready. Invite a friend!';
+        if (pendingChallengeTarget?.username) {
+          try {
+            await api('/games/' + encodeURIComponent(g.code) + '/invite', {
+              mode: 'selected',
+              usernames: [pendingChallengeTarget.username]
+            });
+            invitedMsg = `Room ready & challenge sent to ${pendingChallengeTarget.name || pendingChallengeTarget.username}!`;
+            finalGame = await api('/games/' + encodeURIComponent(g.code)).catch(() => g);
+            notifyChallengeSentOnDevice({
+              targetNames: [pendingChallengeTarget.name || pendingChallengeTarget.username],
+              topic: finalGame.topic || settings.topic || 'English Match',
+              gameCode: finalGame.code
+            }).catch(() => { });
+            refreshSocial().catch(() => { });
+          } catch (invErr) {
+            invitedMsg = invErr?.message || invitedMsg;
+          }
+          setPendingChallengeTarget(null);
+        }
+        setGame(finalGame);
+        localStorage.setItem('lingo-game', finalGame.code);
+        notify(invitedMsg);
       }
     } catch (e) {
       notify(e.message);
@@ -678,10 +888,40 @@ function App() {
   const headings = {
     home: ['Your little corner of learning', 'Dashboard'],
     learn: ['Small steps. Big possibilities.', 'Let’s learn'],
+    friends: ['Connect, squad up & challenge', 'Friends & Communities'],
     practice: ['Listening, Speaking & AI Practice', 'Practice Lab'],
     games: ['A little friendly competition', 'Play & learn'],
-    profile: ['Your space, stats & badges', 'My Profile']
+    profile: ['Your space, stats & badges', 'My Profile'],
+    reminders: ['Phone status-bar alerts & daily reminders', 'Reminders & Alerts']
   };
+
+  const socialUnreadCount = socialPresence
+    ? Math.max(socialPresence.unreadCount || 0, socialPresence.socialBadgeCount || 0)
+    : (
+        (socialOverview?.unreadCount || 0) +
+        (socialOverview?.incomingRequests?.length || 0) +
+        (socialOverview?.communityInvitations?.length || 0) +
+        (socialOverview?.gameInvitations?.length || 0)
+      );
+  const liveGameInvite = (
+    socialPresence?.latestGameInvite ||
+    socialOverview?.gameInvitations?.[0] ||
+    null
+  );
+  const dailyReminders = useMemo(
+    () => (user && progress ? buildPersonalizedDailyReminders({ user, progress }) : null),
+    [
+      user?.username,
+      user?.name,
+      progress?.completed?.length,
+      progress?.checkpoints?.length,
+      progress?.streak,
+      progress?.todayWords,
+      progress?.goal,
+      progress?.xp,
+      progress?.gems
+    ]
+  );
 
   if (loading) {
     return (
@@ -982,6 +1222,18 @@ function App() {
                   <span className="apk-badge">APK</span>
                 </a>
               )}
+              {/* Notifications Bell */}
+              <button
+                type="button"
+                className="topbar-bell-btn"
+                onClick={() => setNotifOpen(true)}
+                aria-label="Notifications"
+              >
+                <Bell size={16} />
+                {socialUnreadCount > 0 && (
+                  <span className="topbar-bell-count">{socialUnreadCount > 9 ? '9+' : socialUnreadCount}</span>
+                )}
+              </button>
               {/* Profile Avatar */}
               <button className="header-profile" onClick={() => navigate('profile')} aria-label="Account">
                 <span className={`avatar small ${avatarColor}`}>{selectedAvatar}</span>
@@ -1011,7 +1263,7 @@ function App() {
           }}
         >
           {/* Page Heading for non-home views (Preserved for accessibility & titles) */}
-          {page !== 'home' && page !== 'learn' && (
+          {page !== 'home' && page !== 'learn' && page !== 'reminders' && (
             <div className="page-heading">
               <div>
                 <p>{headings[page][0]}</p>
@@ -1225,6 +1477,20 @@ function App() {
               />
             )}
 
+            {page === 'friends' && (
+              <FriendsPage
+                api={api}
+                user={user}
+                notify={notify}
+                socialOverview={socialOverview}
+                refreshSocial={refreshSocial}
+                onOpenNotifications={() => setNotifOpen(true)}
+                onChallengeFriend={handleChallengeFriend}
+                onJoinGameFromInvite={handleJoinGameFromInvite}
+                initialSubTab={friendsSubTab}
+              />
+            )}
+
             {page === 'practice' && (
               <PracticeHub progress={progress} updateProgress={applyProgress} api={api} />
             )}
@@ -1234,10 +1500,27 @@ function App() {
                 game.mode === 'solo' ? (
                   <SoloGameRoom game={game} user={user} tick={tick} busy={busy} action={gameAction} />
                 ) : (
-                  <GameRoom game={game} user={user} tick={tick} busy={busy} action={gameAction} copyCode={copyCode} />
+                  <GameRoom
+                    game={game}
+                    user={user}
+                    tick={tick}
+                    busy={busy}
+                    action={gameAction}
+                    copyCode={copyCode}
+                    api={api}
+                    notify={notify}
+                    socialOverview={socialOverview}
+                    refreshSocial={refreshSocial}
+                  />
                 )
               ) : (
-                <Games busy={busy} createGame={createGame} joinGame={joinGame} />
+                <Games
+                  busy={busy}
+                  createGame={createGame}
+                  joinGame={joinGame}
+                  challengeFriend={pendingChallengeTarget}
+                  onClearChallengeFriend={() => setPendingChallengeTarget(null)}
+                />
               )
             )}
 
@@ -1286,8 +1569,10 @@ function App() {
                             style={{ padding: '6px 14px', fontSize: '12px' }}
                             onClick={() => {
                               if (tempName.trim()) {
-                                setUser(prev => ({ ...prev, name: tempName.trim() }));
-                                localStorage.setItem('lingo-custom-name', tempName.trim());
+                                const trimmed = tempName.trim();
+                                setUser(prev => ({ ...prev, name: trimmed }));
+                                localStorage.setItem('lingo-custom-name', trimmed);
+                                api('/social/profile', { name: trimmed }).catch(() => { });
                                 setIsEditingName(false);
                                 notify('Display name updated!');
                               }
@@ -1322,6 +1607,26 @@ function App() {
                       </div>
                     )}
                     <p className="modal-description">@{user.username} · {user.demo ? 'Demo explorer' : 'English explorer'}</p>
+                    {(socialOverview?.me?.lingoId || user.lingoId) && (
+                      <div className="profile-lingo-id-row">
+                        <span>ID: {socialOverview?.me?.lingoId || user.lingoId}</span>
+                        <button
+                          type="button"
+                          className="profile-lingo-id-copy"
+                          onClick={async () => {
+                            const id = socialOverview?.me?.lingoId || user.lingoId;
+                            try {
+                              await navigator.clipboard.writeText(id);
+                              notify('Lingo ID copied!');
+                            } catch {
+                              notify(`Your Lingo ID is ${id}`);
+                            }
+                          }}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1337,6 +1642,7 @@ function App() {
                         onClick={() => {
                           setSelectedAvatar(av);
                           localStorage.setItem('lingo-avatar', av);
+                          api('/social/profile', { avatar: av }).catch(() => { });
                         }}
                       >
                         {av}
@@ -1361,6 +1667,7 @@ function App() {
                         onClick={() => {
                           setAvatarColor(col);
                           localStorage.setItem('lingo-avatar-color', col);
+                          api('/social/profile', { avatarColor: col }).catch(() => { });
                         }}
                         aria-label={`Theme ${col}`}
                       >
@@ -1425,6 +1732,36 @@ function App() {
                       <span className="profile-hub-badge">{progress.completed?.length || 0} done</span>
                       <ChevronRight size={18} className="profile-hub-arrow" />
                     </button>
+
+                    <button
+                      type="button"
+                      className="profile-hub-card social-hub"
+                      onClick={() => navigate('friends')}
+                    >
+                      <div className="profile-hub-icon"><Users size={20} /></div>
+                      <div className="profile-hub-info">
+                        <strong>Friends & Communities</strong>
+                        <p>Manage friends, groups & invites</p>
+                      </div>
+                      <span className="profile-hub-badge">{socialOverview?.friends?.length || 0} friends</span>
+                      <ChevronRight size={18} className="profile-hub-arrow" />
+                    </button>
+
+                    <button
+                      type="button"
+                      className="profile-hub-card reminders-hub"
+                      onClick={() => navigate('reminders')}
+                    >
+                      <div className="profile-hub-icon"><BellRing size={20} /></div>
+                      <div className="profile-hub-info">
+                        <strong>Reminders &amp; Alerts</strong>
+                        <p>Customize phone push &amp; schedule</p>
+                      </div>
+                      <span className="profile-hub-badge">
+                        {notifPrefs.enabled ? 'On' : 'Paused'}
+                      </span>
+                      <ChevronRight size={18} className="profile-hub-arrow" />
+                    </button>
                   </div>
                 </div>
 
@@ -1476,9 +1813,23 @@ function App() {
                 </button>
               </div>
             )}
+
+            {page === 'reminders' && (
+              <RemindersSettingsPage
+                user={user}
+                progress={progress}
+                notifPrefs={notifPrefs}
+                notifPermission={notifPermission}
+                onUpdatePrefs={next => setNotifPrefs(saveNotificationPrefs(next))}
+                onEnableDeviceAlerts={handleEnableDeviceAlerts}
+                onSendTestAlert={handleSendTestAlert}
+                onBack={() => navigate('profile')}
+                notify={notify}
+              />
+            )}
           </div>
 
-          {page !== 'learn' && page !== 'profile' && (
+          {page !== 'learn' && page !== 'profile' && page !== 'reminders' && (
             <footer className="main-footer">
               <div className="main-footer-line">
                 <span className="footer-sprout-icon">🌱</span>
@@ -1507,11 +1858,13 @@ function App() {
             'Home'
           ],
           [BookOpen, 'learn', 'Learn'],
+          [Users, 'friends', 'Friends'],
           [Headphones, 'practice', 'Practice'],
           [Gamepad2, 'games', 'Play'],
           [User, 'profile', 'Profile']
         ].map(([Icon, key, label]) => {
-          const isActive = page === key;
+          const isActive = page === key || (key === 'profile' && page === 'reminders');
+          const showFriendsBadge = key === 'friends' && socialUnreadCount > 0;
           return (
             <button
               key={key}
@@ -1524,6 +1877,9 @@ function App() {
             >
               <Icon size={19} />
               <span>{label}</span>
+              {showFriendsBadge && (
+                <span className="mobile-nav-badge">{socialUnreadCount > 9 ? '9+' : socialUnreadCount}</span>
+              )}
             </button>
           );
         })}
@@ -1561,6 +1917,52 @@ function App() {
           entry={rewardQueue[0]}
           queueCount={rewardQueue.length}
           onContinue={() => setRewardQueue(prev => prev.slice(1))}
+        />
+      )}
+
+      {liveGameInvite && !game && !activeLessonPage && liveGameInvite.id !== dismissedInviteId && (
+        <div className="global-game-invite-toast" role="alert">
+          <div className="ggit-head">
+            <span>GAME INVITATION!</span>
+            <span>{liveGameInvite.playerCount}/{liveGameInvite.maxPlayers} players</span>
+          </div>
+          <p className="ggit-text">
+            <strong>{liveGameInvite.senderName}</strong> challenged you to <b>{liveGameInvite.topic}</b> ({liveGameInvite.difficulty})!
+          </p>
+          <div className="ggit-actions">
+            <button
+              type="button"
+              className="ggit-accept"
+              onClick={() => handleQuickRespondGameInvite(liveGameInvite.id, 'accept')}
+            >
+              ACCEPT CHALLENGE
+            </button>
+            <button
+              type="button"
+              className="ggit-decline"
+              onClick={() => handleQuickRespondGameInvite(liveGameInvite.id, 'decline')}
+            >
+              DECLINE
+            </button>
+          </div>
+        </div>
+      )}
+
+      {notifOpen && (
+        <NotificationsModal
+          api={api}
+          socialOverview={socialOverview}
+          notify={notify}
+          notifPermission={notifPermission}
+          onEnableDeviceAlerts={handleEnableDeviceAlerts}
+          onSendTestAlert={handleSendTestAlert}
+          onClose={() => setNotifOpen(false)}
+          onChanged={refreshSocial}
+          onJoinGameFromInvite={handleJoinGameFromInvite}
+          onOpenFriendsTab={tab => {
+            setFriendsSubTab(tab);
+            navigate('friends');
+          }}
         />
       )}
 
@@ -2505,4 +2907,5 @@ function Lesson({ lesson, api, updateProgress, onCompleteCheckpoint, savedWords 
   );
 }
 
+document.documentElement.dataset.platform = isNativeUI() ? 'native' : 'web';
 createRoot(document.getElementById('root')).render(<App />);
