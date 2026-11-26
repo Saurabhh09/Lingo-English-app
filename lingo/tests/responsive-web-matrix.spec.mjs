@@ -81,10 +81,12 @@ for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
     await page.goto(srv.baseUrl);
 
-    // Relaxed user zoom on web
+    // Relaxed user zoom & custom webapp favicon on web
     const vpMeta = await page.locator('meta[name="viewport"]').getAttribute('content');
     expect(vpMeta).not.toContain('user-scalable=no');
     expect(vpMeta).not.toContain('maximum-scale=1.0');
+    const faviconHref = await page.locator('link[rel="icon"]').getAttribute('href');
+    expect(faviconHref).toBe('/web-favicon.jpg');
 
     // Demo login
     const getStarted = page.getByRole('button', { name: 'Get started' });
@@ -127,10 +129,22 @@ for (const vp of VIEWPORTS) {
     await expect(page.locator('.games-page')).toBeVisible();
     await assertCleanViewportMetrics(page, `${vp.name}/games`, vp.isDesktop);
 
-    // Profile
+    // Profile + verify swipe left on Profile wraps to Home (never Reminders)
     await navTo(page, 'profile', vp.isDesktop);
     await expect(page.locator('.profile-page-view')).toBeVisible();
     await assertCleanViewportMetrics(page, `${vp.name}/profile`, vp.isDesktop);
+    if (!vp.isDesktop) {
+      await page.evaluate(() => {
+        const m = document.querySelector('main');
+        const a = new Event('touchstart', { bubbles: true });
+        a.touches = [{ clientX: 300, clientY: 200 }];
+        m.dispatchEvent(a);
+        const b = new Event('touchend', { bubbles: true });
+        b.changedTouches = [{ clientX: 100, clientY: 205 }];
+        m.dispatchEvent(b);
+      });
+      await expect(page.locator('.dashboard-grid')).toBeVisible();
+    }
 
     // Reminders
     await navTo(page, 'reminders', vp.isDesktop);
