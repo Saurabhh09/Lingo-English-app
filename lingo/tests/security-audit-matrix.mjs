@@ -139,14 +139,27 @@ try {
   log('CORS_AND_HEADERS', health.headers.get('access-control-allow-origin') === '*' || !health.headers.get('x-content-type-options'),
     `ACAO=${health.headers.get('access-control-allow-origin')}, XCTO=${health.headers.get('x-content-type-options')}, XFO=${health.headers.get('x-frame-options')}, CSP=${health.headers.get('content-security-policy')}`);
 
-  // 7. Authorization Matrix (A vs B)
+  // 7. Authorization Matrix (A vs B) - stranger profile minimization & search rate limit
   const readBtoA = await req(`/social/users/${uA}`, { token: tokB });
-  log('IDOR_SOCIAL_USER_PROFILE', readBtoA.status === 200 && readBtoA.data?.profile?.lingoId !== undefined,
-    `status=${readBtoA.status}, fields=${Object.keys(readBtoA.data?.profile || {}).join(',')}`);
+  const strangerFields = Object.keys(readBtoA.data?.profile || {});
+  assert.equal(readBtoA.status, 200);
+  assert.equal(readBtoA.data?.profile?.lastActiveAt, undefined, 'Stranger profile must strip lastActiveAt');
+  assert.equal(readBtoA.data?.profile?.earnedBadgeIds, undefined, 'Stranger profile must strip earnedBadgeIds');
+  assert.equal(readBtoA.data?.profile?.xp, undefined, 'Stranger profile must strip XP');
+  assert.equal(readBtoA.data?.profile?.isOnline, undefined, 'Stranger profile must strip online presence');
+  log('IDOR_SOCIAL_USER_PROFILE', false, `status=${readBtoA.status}, strangerFields=${strangerFields.join(',')}`);
 
   const searchEnum = await req('/social/search?q=sec_', { token: tokB });
-  log('USER_SEARCH_ENUMERATION', searchEnum.status === 200 && Array.isArray(searchEnum.data?.users) && searchEnum.data.users.length > 0,
-    `status=${searchEnum.status}, matchedUsers=${searchEnum.data?.users?.length}`);
+  const firstHit = searchEnum.data?.users?.[0] || {};
+  assert.equal(searchEnum.status, 200);
+  assert.equal(firstHit.lastActiveAt, undefined, 'Search results must not expose lastActiveAt');
+  assert.equal(firstHit.xp, undefined, 'Search results for non-friends must not expose XP');
+  const searchSpam = await Promise.all(
+    Array.from({ length: 28 }, (_, idx) => req(`/social/search?q=sec_${idx}`, { token: tokB }))
+  );
+  assert.ok(searchSpam.some(r => r.status === 429), 'Social search must rate limit rapid enumeration bursts');
+  log('USER_SEARCH_ENUMERATION', false,
+    `matchedUsers=${searchEnum.data?.users?.length}, searchRate429=${searchSpam.some(r => r.status === 429)}`);
 
   // 7b: B tries A's game room endpoints before joining
   const gA = await req('/games', { token: tokA, body: { topic: 'Grammar', difficulty: 'Beginner', duration: 1 } });
