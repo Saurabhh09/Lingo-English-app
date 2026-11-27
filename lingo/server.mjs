@@ -88,7 +88,7 @@ app.use((req, res, next) => {
     if (isAllowedCorsOrigin(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Timezone');
       if (req.method === 'OPTIONS') {
         return res.sendStatus(204);
       }
@@ -228,7 +228,37 @@ async function searchAccountsDirect(q, excludeUsername, limit = 40) {
   }
   return out;
 }
-const id = () => randomBytes(16).toString('hex'); const hash = s => createHash('sha256').update(s).digest('hex'); const today = () => new Date().toISOString().slice(0, 10);
+const id = () => randomBytes(16).toString('hex'); const hash = s => createHash('sha256').update(s).digest('hex');
+function normalizeTimeZone(tz) {
+  if (typeof tz !== 'string' || !tz.trim() || tz.length > 64) return 'UTC';
+  try {
+    Intl.DateTimeFormat('en-CA', { timeZone: tz.trim() }).format(new Date());
+    return tz.trim();
+  } catch {
+    return 'UTC';
+  }
+}
+function dateInTz(ms = Date.now(), tz = 'UTC') {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+  } catch {
+    return new Date(ms).toISOString().slice(0, 10);
+  }
+}
+const today = (tz = 'UTC') => dateInTz(now(), tz);
+function recordDailyWords(p, wordCount, tz = 'UTC') {
+  const safeTz = normalizeTimeZone(tz);
+  const todayStr = dateInTz(now(), safeTz);
+  const yesterdayStr = dateInTz(now() - 86400000, safeTz);
+  p.words = (p.words || 0) + wordCount;
+  if (p.dailyDate !== todayStr) p.todayWords = 0;
+  p.todayWords = (p.todayWords || 0) + wordCount;
+  p.dailyDate = todayStr;
+  p.streak = p.lastStudy === todayStr ? p.streak : p.lastStudy === yesterdayStr ? (p.streak || 0) + 1 : 1;
+  p.lastStudy = todayStr;
+  if (!p.history || typeof p.history !== 'object') p.history = {};
+  p.history[todayStr] = (p.history[todayStr] || 0) + wordCount;
+}
 
 let badgesCatalogSeeded = false;
 async function syncRelationalAchievements(username, earnedBadges = {}, achievementProgress = {}) {
@@ -450,12 +480,12 @@ app.get('/api/practice/catalog', (_, res) => { res.set('Cache-Control', 'public,
 app.get('/api/badges', (_, res) => { res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=600'); res.json(CACHED_BADGES_CATALOG); });
 app.get('/api/rewards/catalog', (_, res) => { res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=600'); res.json(CACHED_REWARDS_CATALOG); });
 app.get('/api/ai/status', (_, res) => res.json(getAIStatus()));
-const initialProgress = (demo = false) => ({ xp: demo ? 1240 : 0, gems: 0, words: demo ? 450 : 0, streak: demo ? 7 : 0, completed: [], checkpoints: [], saved: [], rewards: {}, walletLedger: [], certificates: {}, goal: 10, todayWords: 0, lastStudy: null, history: {}, dailyDate: today(), practice: { listening: [], speaking: [], pronunciation: [], conversation: [] } });
+const initialProgress = (demo = false, tz = 'UTC') => ({ xp: demo ? 1240 : 0, gems: 0, words: demo ? 450 : 0, streak: demo ? 7 : 0, completed: [], checkpoints: [], saved: [], rewards: {}, walletLedger: [], certificates: {}, goal: 10, todayWords: 0, lastStudy: null, history: {}, dailyDate: today(normalizeTimeZone(tz)), practice: { listening: [], speaking: [], pronunciation: [], conversation: [] } });
 const publicUser = u => ({ username: u.username, lingoId: u.lingoId || deriveLingoId(u.username), name: u.name, avatar: u.avatar || '🌱', avatarColor: u.avatarColor || 'lime', demo: u.demo });
 const DUMMY_SCRYPT_SALT = 'lingo-constant-time-dummy-salt-v1';
 const DUMMY_SCRYPT_HASH = scryptSync('lingo-dummy-invalid-password', DUMMY_SCRYPT_SALT, 64);
 async function session(u) { const token = id() + id(); await db.set('sessions', hash(token), { username: u.username, tokenVersion: u.tokenVersion || 0, expires: Date.now() + 30 * 86400000 }); return token; }
-app.post('/api/auth/signup', route(async (req, res) => { const body = req.body || {}; const { name, password } = body; const username = String(body.username || '').toLowerCase().trim(); if (!/^[a-z0-9_]{3,20}$/.test(username)) fail('Use 3–20 letters, numbers, or underscores for your username.'); if (typeof name !== 'string' || !name.trim() || name.length > 40) fail('Please enter a name (up to 40 characters).'); if (typeof password !== 'string' || password.length < 8 || password.length > 128) fail('Choose a password with 8–128 characters.'); await locked('signup:' + username, async () => { if (await db.get('accounts', username)) fail('That username is taken. Try another one.', 409); const salt = id(); const u = { username, lingoId: deriveLingoId(username), avatar: '🌱', avatarColor: 'lime', name: name.trim(), salt, password: scryptSync(password, salt, 64).toString('hex'), tokenVersion: 0, demo: false }; await db.set('accounts', username, u); await db.set('progress', username, initialProgress()); res.json({ token: await session(u), user: publicUser(u), progress: initialProgress() }); }); }));
+app.post('/api/auth/signup', route(async (req, res) => { const body = req.body || {}; const { name, password } = body; const username = String(body.username || '').toLowerCase().trim(); if (!/^[a-z0-9_]{3,20}$/.test(username)) fail('Use 3–20 letters, numbers, or underscores for your username.'); if (typeof name !== 'string' || !name.trim() || name.length > 40) fail('Please enter a name (up to 40 characters).'); if (typeof password !== 'string' || password.length < 8 || password.length > 128) fail('Choose a password with 8–128 characters.'); await locked('signup:' + username, async () => { if (await db.get('accounts', username)) fail('That username is taken. Try another one.', 409); const salt = id(); const u = { username, lingoId: deriveLingoId(username), avatar: '🌱', avatarColor: 'lime', name: name.trim(), salt, password: scryptSync(password, salt, 64).toString('hex'), tokenVersion: 0, demo: false }; const prog = initialProgress(false, req.headers['x-timezone']); await db.set('accounts', username, u); await db.set('progress', username, prog); res.json({ token: await session(u), user: publicUser(u), progress: prog }); }); }));
 app.post('/api/auth/login', route(async (req, res) => {
   const body = req.body || {};
   const username = String(body.username || '').toLowerCase().trim();
@@ -502,9 +532,11 @@ app.get('/api/me', route(async (req, res) => {
     const p = await db.get('progress', req.user.username);
     if (!p.practice) p.practice = { listening: [], speaking: [], pronunciation: [], conversation: [] };
     let dirty = false;
-    if (p.dailyDate !== today()) {
+    const reqTz = normalizeTimeZone(req.headers['x-timezone']);
+    const curToday = today(reqTz);
+    if (p.dailyDate !== curToday) {
       p.todayWords = 0;
-      p.dailyDate = today();
+      p.dailyDate = curToday;
       dirty = true;
     }
     const prevBadgeCount = Object.keys(p.badges || {}).length;
@@ -748,14 +780,7 @@ app.post('/api/progress/lesson', route(async (req, res) => {
       earned = lesson.xp;
       p.completed.push(lesson.id);
       p.xp += earned;
-      p.words += lesson.questions.length;
-      if (p.dailyDate !== today()) p.todayWords = 0;
-      p.todayWords += lesson.questions.length;
-      p.dailyDate = today();
-      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-      p.streak = p.lastStudy === today() ? p.streak : p.lastStudy === yesterday ? p.streak + 1 : 1;
-      p.lastStudy = today();
-      p.history[today()] = (p.history[today()] || 0) + lesson.questions.length;
+      recordDailyWords(p, lesson.questions.length, req.headers['x-timezone']);
     }
     const nowIso = new Date(now()).toISOString();
     const evalRes = evaluateAchievements(
@@ -858,14 +883,7 @@ app.post('/api/progress/checkpoint', route(async (req, res) => {
       earned = canonicalXp;
       p.checkpoints.push(checkpointId);
       p.xp += earned;
-      p.words += total;
-      if (p.dailyDate !== today()) p.todayWords = 0;
-      p.todayWords += total;
-      p.dailyDate = today();
-      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-      p.streak = p.lastStudy === today() ? p.streak : p.lastStudy === yesterday ? p.streak + 1 : 1;
-      p.lastStudy = today();
-      p.history[today()] = (p.history[today()] || 0) + total;
+      recordDailyWords(p, total, req.headers['x-timezone']);
     }
     const nowIso = new Date(now()).toISOString();
     const evalRes = evaluateAchievements(
@@ -911,14 +929,7 @@ app.post('/api/practice/listening/submit', route(async (req, res) => {
       earned = mod.xp || 25;
       p.practice.listening.push(moduleId);
       p.xp += earned;
-      p.words += keys.length;
-      if (p.dailyDate !== today()) p.todayWords = 0;
-      p.todayWords += keys.length;
-      p.dailyDate = today();
-      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-      p.streak = p.lastStudy === today() ? p.streak : p.lastStudy === yesterday ? p.streak + 1 : 1;
-      p.lastStudy = today();
-      p.history[today()] = (p.history[today()] || 0) + keys.length;
+      recordDailyWords(p, keys.length, req.headers['x-timezone']);
     }
     const evalRes = evaluateAchievements(
       p,
@@ -960,14 +971,7 @@ app.post('/api/practice/speaking/submit', route(async (req, res) => {
       earned = spk.xp || 30;
       p.practice.speaking.push(promptId);
       p.xp += earned;
-      p.words += words.length;
-      if (p.dailyDate !== today()) p.todayWords = 0;
-      p.todayWords += words.length;
-      p.dailyDate = today();
-      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-      p.streak = p.lastStudy === today() ? p.streak : p.lastStudy === yesterday ? p.streak + 1 : 1;
-      p.lastStudy = today();
-      p.history[today()] = (p.history[today()] || 0) + words.length;
+      recordDailyWords(p, words.length, req.headers['x-timezone']);
     }
     const evalRes = evaluateAchievements(p, { type: 'daily_activity_completed' }, new Date(now()).toISOString());
     await db.set('progress', req.user.username, p);
@@ -1001,14 +1005,7 @@ app.post('/api/practice/pronunciation/submit', route(async (req, res) => {
       earned = item.xp || 20;
       p.practice.pronunciation.push(itemId);
       p.xp += earned;
-      p.words += 1;
-      if (p.dailyDate !== today()) p.todayWords = 0;
-      p.todayWords += 1;
-      p.dailyDate = today();
-      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-      p.streak = p.lastStudy === today() ? p.streak : p.lastStudy === yesterday ? p.streak + 1 : 1;
-      p.lastStudy = today();
-      p.history[today()] = (p.history[today()] || 0) + 1;
+      recordDailyWords(p, 1, req.headers['x-timezone']);
     }
     const evalRes = evaluateAchievements(
       p,
@@ -1108,14 +1105,7 @@ app.post('/api/ai/conversation', route(async (req, res) => {
       earned = 30;
       p.practice.conversation.push(scenario.id);
       p.xp += earned;
-      p.words += 5;
-      if (p.dailyDate !== today()) p.todayWords = 0;
-      p.todayWords += 5;
-      p.dailyDate = today();
-      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-      p.streak = p.lastStudy === today() ? p.streak : p.lastStudy === yesterday ? p.streak + 1 : 1;
-      p.lastStudy = today();
-      p.history[today()] = (p.history[today()] || 0) + 5;
+      recordDailyWords(p, 5, req.headers['x-timezone']);
     }
     await db.set('progress', req.user.username, p);
     res.json({

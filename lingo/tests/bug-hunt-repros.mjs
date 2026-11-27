@@ -1,17 +1,38 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { startIsolatedUiServer } from './helpers/isolated-server.mjs';
+import { lessons } from '../content.js';
 
 const srv = await startIsolatedUiServer();
 let browser;
 
 try {
-  // Repro 1: Server streak/history UTC vs IST boundary bug
-  const utcAtIstMidnight = new Date('2026-11-26T18:45:00Z');
-  const utcDateStr = utcAtIstMidnight.toISOString().slice(0, 10);
-  const istDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(utcAtIstMidnight);
-  assert.notEqual(utcDateStr, istDateStr, 'Expected UTC date vs IST date mismatch after 00:00 IST');
-  console.log(`[CONFIRMED BUG] UTC_VS_IST_DATE: 2026-11-26T18:45:00Z -> UTC=${utcDateStr}, IST=${istDateStr}`);
+  // Repro 1: Server streak/history honors user X-Timezone instead of UTC server date
+  const tzSignupA = await fetch(`${srv.apiUrl}/api/auth/signup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Timezone': 'Pacific/Kiritimati' },
+    body: JSON.stringify({ username: 'tz_a_' + String(Date.now()).slice(-7), name: 'TZ East', password: 'Password123!' })
+  }).then(r => r.json());
+  const tzSignupB = await fetch(`${srv.apiUrl}/api/auth/signup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Timezone': 'Pacific/Niue' },
+    body: JSON.stringify({ username: 'tz_b_' + String(Date.now()).slice(-7), name: 'TZ West', password: 'Password123!' })
+  }).then(r => r.json());
+  const helloAnswers = lessons[0].questions.map(q => q[2]);
+  const tzLessonA = await fetch(`${srv.apiUrl}/api/progress/lesson`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tzSignupA.token, 'X-Timezone': 'Pacific/Kiritimati' },
+    body: JSON.stringify({ lesson: 'hello', answers: helloAnswers })
+  }).then(r => r.json());
+  const tzLessonB = await fetch(`${srv.apiUrl}/api/progress/lesson`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tzSignupB.token, 'X-Timezone': 'Pacific/Niue' },
+    body: JSON.stringify({ lesson: 'hello', answers: helloAnswers })
+  }).then(r => r.json());
+  assert.equal(tzLessonA.passed, true);
+  assert.equal(tzLessonB.passed, true);
+  assert.notEqual(tzLessonA.progress.dailyDate, tzLessonB.progress.dailyDate, 'Distinct X-Timezone headers across IDL must record respective local dates');
+  console.log(`[FIXED     ] TIMEZONE_DATE_ROLLOVER: Kiritimati=${tzLessonA.progress.dailyDate}, Niue=${tzLessonB.progress.dailyDate}`);
 
   // Repro 2: Sign-out leaves lingo-custom-name & leaks into next signed-in user in same browser
   browser = await chromium.launch();
