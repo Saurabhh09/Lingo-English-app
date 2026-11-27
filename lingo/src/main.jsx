@@ -63,6 +63,24 @@ import { fetchWithSWR, getSyncCache, clearUserScopedCaches } from './services/da
 import defaultApkManifest from '../releases/apk-manifest.json';
 
 const customNameStorageKey = username => `lingo-custom-name:${username || 'guest'}`;
+function safeGetStorage(key, fallback = null) {
+  try {
+    const val = localStorage.getItem(key);
+    return val === null ? fallback : val;
+  } catch {
+    return fallback;
+  }
+}
+function safeSetStorage(key, val) {
+  try {
+    localStorage.setItem(key, val);
+  } catch { }
+}
+function safeRemoveStorage(key) {
+  try {
+    localStorage.removeItem(key);
+  } catch { }
+}
 
 const pages = ['home', 'learn', 'friends', 'practice', 'games', 'profile', 'reminders'];
 const navPages = ['home', 'learn', 'friends', 'practice', 'games', 'profile'];
@@ -98,8 +116,8 @@ function App() {
   const [game, setGame] = useState(null);
   const [wordIndex, setWordIndex] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [selectedAvatar, setSelectedAvatar] = useState(() => localStorage.getItem('lingo-avatar') || '🌱');
-  const [avatarColor, setAvatarColor] = useState(() => localStorage.getItem('lingo-avatar-color') || 'lime');
+  const [selectedAvatar, setSelectedAvatar] = useState(() => safeGetStorage('lingo-avatar', '🌱'));
+  const [avatarColor, setAvatarColor] = useState(() => safeGetStorage('lingo-avatar-color', 'lime'));
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
   const [activeLessonPage, setActiveLessonPage] = useState(null);
@@ -243,7 +261,7 @@ function App() {
     }
   }
 
-  const token = useRef(localStorage.getItem('lingo-token'));
+  const token = useRef(safeGetStorage('lingo-token'));
   const toastTimer = useRef();
   const touch = useRef(null);
   const word = words[wordIndex];
@@ -265,7 +283,7 @@ function App() {
     token.current = d.token;
     try { localStorage.setItem('lingo-token', d.token); } catch { }
     try { localStorage.removeItem('lingo-custom-name'); } catch { }
-    const customName = d.user?.username ? localStorage.getItem(customNameStorageKey(d.user.username)) : null;
+    const customName = d.user?.username ? safeGetStorage(customNameStorageKey(d.user.username)) : null;
     if (customName && d.user) {
       d.user.name = customName;
     }
@@ -315,7 +333,7 @@ function App() {
   function handleJoinGameFromInvite(joinedGame, meta = {}) {
     if (!joinedGame?.code) return;
     setGame(joinedGame);
-    localStorage.setItem('lingo-game', joinedGame.code);
+    safeSetStorage('lingo-game', joinedGame.code);
     setModal(null);
     setNotifOpen(false);
     navigate('games');
@@ -332,7 +350,7 @@ function App() {
     if (!friend?.username) return;
     if (game?.status === 'finished') {
       setGame(null);
-      localStorage.removeItem('lingo-game');
+      safeRemoveStorage('lingo-game');
     }
     setPendingChallengeTarget(friend);
     setModal(null);
@@ -408,12 +426,12 @@ function App() {
         } catch (e) {
           if (e.status !== 401) throw e;
           token.current = null;
-          localStorage.removeItem('lingo-token');
+          safeRemoveStorage('lingo-token');
         }
       }
       if (d) {
-        try { localStorage.removeItem('lingo-custom-name'); } catch { }
-        const customName = d.user?.username ? localStorage.getItem(customNameStorageKey(d.user.username)) : null;
+        safeRemoveStorage('lingo-custom-name');
+        const customName = d.user?.username ? safeGetStorage(customNameStorageKey(d.user.username)) : null;
         if (customName && d.user) {
           d.user.name = customName;
         }
@@ -440,22 +458,22 @@ function App() {
             setPage('friends');
           }
         } catch { }
-        const soloStored = localStorage.getItem('lingo-solo');
+        const soloStored = safeGetStorage('lingo-solo');
         if (soloStored) {
           try {
             const sg = await api('/games/solo');
             if (sg) setGame(sg);
-            else localStorage.removeItem('lingo-solo');
+            else safeRemoveStorage('lingo-solo');
           } catch {
-            localStorage.removeItem('lingo-solo');
+            safeRemoveStorage('lingo-solo');
           }
         } else {
-          const code = localStorage.getItem('lingo-game');
+          const code = safeGetStorage('lingo-game');
           if (code) {
             try {
               setGame(await api('/games/' + code));
             } catch {
-              localStorage.removeItem('lingo-game');
+              safeRemoveStorage('lingo-game');
             }
           }
         }
@@ -667,7 +685,7 @@ function App() {
           if (e.status === 404) {
             notify(e.message || 'Game room is no longer available.');
             setGame(null);
-            localStorage.removeItem(game.mode === 'solo' ? 'lingo-solo' : 'lingo-game');
+            safeRemoveStorage(game.mode === 'solo' ? 'lingo-solo' : 'lingo-game');
           } else {
             console.warn('Transient polling error:', e);
           }
@@ -887,7 +905,7 @@ function App() {
       if (settings.metadata?.mode === 'solo' || settings.mode === 'solo') {
         const g = await api('/games/solo', settings);
         setGame(g);
-        localStorage.setItem('lingo-solo', 'true');
+        safeSetStorage('lingo-solo', 'true');
         notify('Solo challenge starting in 10 seconds!');
       } else {
         const g = await api('/games', settings);
@@ -913,7 +931,7 @@ function App() {
           setPendingChallengeTarget(null);
         }
         setGame(finalGame);
-        localStorage.setItem('lingo-game', finalGame.code);
+        safeSetStorage('lingo-game', finalGame.code);
         notify(invitedMsg);
       }
     } catch (e) {
@@ -928,7 +946,7 @@ function App() {
     try {
       const g = await api('/games/join', { code });
       setGame(g);
-      localStorage.setItem('lingo-game', g.code);
+      safeSetStorage('lingo-game', g.code);
       notify('You’re in! Welcome to the game.');
     } catch (e) {
       notify(e.message);
@@ -945,12 +963,12 @@ function App() {
       const g = await api(endpoint, body);
       if (action === 'leave') {
         setGame(null);
-        localStorage.removeItem(game.mode === 'solo' ? 'lingo-solo' : 'lingo-game');
+        safeRemoveStorage(game.mode === 'solo' ? 'lingo-solo' : 'lingo-game');
       } else setGame(g);
     } catch (e) {
       if (action === 'leave') {
         setGame(null);
-        localStorage.removeItem(game.mode === 'solo' ? 'lingo-solo' : 'lingo-game');
+        safeRemoveStorage(game.mode === 'solo' ? 'lingo-solo' : 'lingo-game');
       }
       notify(e.message);
     } finally {
@@ -1736,7 +1754,7 @@ function App() {
                         className={`avatar-pick-btn ${selectedAvatar === av ? 'active' : ''}`}
                         onClick={() => {
                           setSelectedAvatar(av);
-                          localStorage.setItem('lingo-avatar', av);
+                          safeSetStorage('lingo-avatar', av);
                           api('/social/profile', { avatar: av }).catch(() => { });
                         }}
                       >
@@ -1761,7 +1779,7 @@ function App() {
                         style={{ background: hex }}
                         onClick={() => {
                           setAvatarColor(col);
-                          localStorage.setItem('lingo-avatar-color', col);
+                          safeSetStorage('lingo-avatar-color', col);
                           api('/social/profile', { avatarColor: col }).catch(() => { });
                         }}
                         aria-label={`Theme ${col}`}

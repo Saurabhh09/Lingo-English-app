@@ -37,7 +37,7 @@ function getClientTimezone() {
   }
 }
 
-export async function requestApi(path, { body, method, token } = {}) {
+export async function requestApi(path, { body, method, token, timeoutMs = 15000 } = {}) {
   const cleanPath = path.startsWith('/api') ? path : '/api' + (path.startsWith('/') ? path : '/' + path);
   const fullUrl = getApiUrl(cleanPath);
   const headers = {
@@ -54,6 +54,8 @@ export async function requestApi(path, { body, method, token } = {}) {
         method: httpMethod,
         headers,
         data: body,
+        connectTimeout: Math.min(timeoutMs, 10000),
+        readTimeout: timeoutMs
       });
       let data = response.data || {};
       if (typeof data === 'string') {
@@ -77,11 +79,26 @@ export async function requestApi(path, { body, method, token } = {}) {
     }
   }
 
-  const r = await fetch(fullUrl, {
-    method: httpMethod,
-    headers,
-    ...(body ? { body: JSON.stringify(body) } : {})
-  });
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  let r;
+  try {
+    r = await fetch(fullUrl, {
+      method: httpMethod,
+      headers,
+      ...(controller ? { signal: controller.signal } : {}),
+      ...(body ? { body: JSON.stringify(body) } : {})
+    });
+  } catch (err) {
+    if (err?.name === 'AbortError') {
+      const timeoutErr = new Error('Request timed out. Please check your connection and try again.');
+      timeoutErr.status = 408;
+      throw timeoutErr;
+    }
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 
   const text = await r.text();
   let data;
