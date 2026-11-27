@@ -55,13 +55,14 @@ jobs:
       - name: Install Playwright Chromium
         run: npx --prefix lingo playwright install chromium
 
-      - name: Run isolated security, bug-repro, social, reward, and UI suites
+      - name: Run isolated security, bug-repro, social, reward, load, and UI suites
         env:
           CI: 'true'
           ISOLATED_TEST: '1'
         run: |
           node lingo/tests/security-audit-matrix.mjs
           node lingo/tests/bug-hunt-repros.mjs
+          node lingo/tests/load-test-isolated.mjs
           npm --prefix lingo run test:e2e
           npm --prefix lingo run test:matrix
           npm --prefix lingo run test:phase1
@@ -72,16 +73,12 @@ jobs:
           node lingo/tests/social-system-verify.mjs
           node lingo/tests/rewards-system.mjs
           node lingo/tests/option-shuffling-verify.mjs
-          node lingo/tests/phase2-lifecycle.mjs
-          node lingo/tests/phase3-solo-friends.mjs
-          node lingo/tests/phase3-acceptance.mjs
-          node lingo/tests/phase4-llm-questions.mjs
-          node lingo/tests/phase5-multiplayer-sync.mjs
 
-      - name: Run server-backed curriculum & lesson engine suites (ISOLATED_TEST=1)
+      - name: Run server-backed curriculum, lifecycle & lesson engine suites (ISOLATED_TEST=1)
         env:
           ISOLATED_TEST: '1'
           PORT: '3000'
+          DATA_PATH: /tmp/lingo-ci-data.json
         run: |
           node --prefix lingo server.mjs &
           SRV_PID=$!
@@ -94,8 +91,13 @@ jobs:
           npm --prefix lingo run test:curriculum
           npm --prefix lingo run test:phase10
           npm --prefix lingo run test:phase11
+          node lingo/tests/phase12-release-readiness.mjs
+          node lingo/tests/phase2-lifecycle.mjs
+          node lingo/tests/phase3-solo-friends.mjs
+          node lingo/tests/phase3-acceptance.mjs
+          node lingo/tests/phase4-llm-questions.mjs
+          node lingo/tests/phase5-multiplayer-sync.mjs
           node lingo/tests/shared-learning-experience.mjs
-          node lingo/tests/comprehensive-regression-suite.mjs
           node lingo/tests/curriculum-reconciliation.mjs
           node lingo/tests/b1-curriculum.mjs
           node lingo/tests/b2-curriculum.mjs

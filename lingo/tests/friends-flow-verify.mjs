@@ -76,7 +76,7 @@ async function runTests() {
     assert.equal(created.data.status, 'waiting');
     assert.equal(created.data.hostRole, 'player');
     const code = created.data.code;
-    assert.match(code, /^[A-F0-9]{6}$/);
+    assert.match(code, /^[A-Z0-9]{6}$/);
 
     // 2. Guest joins room
     const joined = await req('/games/join', { code }, guest.data.token);
