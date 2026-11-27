@@ -4,10 +4,8 @@ import { requestApi } from '../../apiConfig.js';
 import { fetchWithSWR, getSyncCache } from '../../services/dataCache.js';
 
 export function LessonPreviewModal({ lesson, onClose, onStartReal, isLocked, prerequisiteName }) {
-  if (!lesson) return null;
-
-  const isCheckpoint = lesson.isCheckpoint;
-  const targetId = lesson.realLessonId || lesson.id;
+  const isCheckpoint = Boolean(lesson?.isCheckpoint);
+  const targetId = lesson ? (lesson.realLessonId || lesson.id) : null;
   const [curriculumData, setCurriculumData] = useState(() => (
     targetId && !isCheckpoint ? getSyncCache(`lesson:${targetId}`) : null
   ));
@@ -24,9 +22,13 @@ export function LessonPreviewModal({ lesson, onClose, onStartReal, isLocked, pre
           if (active && data) setCurriculumData(data);
         })
         .catch(() => { });
+    } else {
+      setCurriculumData(null);
     }
     return () => { active = false; };
   }, [targetId, isCheckpoint]);
+
+  if (!lesson) return null;
 
   const primaryObj = curriculumData?.primaryObjective;
 
