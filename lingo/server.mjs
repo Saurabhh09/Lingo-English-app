@@ -85,10 +85,8 @@ const supabase = connected ? createClient(process.env.SUPABASE_URL, process.env.
 const dataPath = (process.env.NODE_ENV !== 'production' && process.env.DATA_PATH) ? path.resolve(process.env.DATA_PATH) : path.join(root, 'data.json');
 let local = fs.existsSync(dataPath) ? JSON.parse(fs.readFileSync(dataPath, 'utf8')) : { accounts: {}, sessions: {}, progress: {}, games: {}, solo: {} };
 if (!local.solo) local.solo = {};
-const db = { async get(table, id) { if (!supabase) return structuredClone(local[table]?.[id] || null); const { data, error } = await supabase.from('lingo_' + table).select('payload').eq('id', id).maybeSingle(); if (error) throw Error('Database is not ready. Apply supabase/schema.sql.'); return data?.payload || null; }, async set(table, id, payload) { if (table === 'accounts' || (table === 'progress' && id !== SOCIAL_STATE_ID)) socialDirectoryCache = null; if (supabase) { const { error } = await supabase.from('lingo_' + table).upsert({ id, payload }); if (error) throw Error('Database write failed. Check your Supabase setup.'); } else { if (!local[table]) local[table] = {}; local[table][id] = structuredClone(payload); try { fs.writeFileSync(dataPath + '.tmp', JSON.stringify(local)); fs.renameSync(dataPath + '.tmp', dataPath); } catch { fs.writeFileSync(dataPath, JSON.stringify(local)); } } }, async del(table, id) { if (table === 'accounts' || (table === 'progress' && id !== SOCIAL_STATE_ID)) socialDirectoryCache = null; if (supabase) { const { error } = await supabase.from('lingo_' + table).delete().eq('id', id); if (error) throw error; } else { if (local[table]) delete local[table][id]; fs.writeFileSync(dataPath, JSON.stringify(local)); } } };
+const db = { async get(table, id) { if (!supabase) return structuredClone(local[table]?.[id] || null); const { data, error } = await supabase.from('lingo_' + table).select('payload').eq('id', id).maybeSingle(); if (error) throw Error('Database is not ready. Apply supabase/schema.sql.'); return data?.payload || null; }, async set(table, id, payload) { if (supabase) { const { error } = await supabase.from('lingo_' + table).upsert({ id, payload }); if (error) throw Error('Database write failed. Check your Supabase setup.'); } else { if (!local[table]) local[table] = {}; local[table][id] = structuredClone(payload); try { fs.writeFileSync(dataPath + '.tmp', JSON.stringify(local)); fs.renameSync(dataPath + '.tmp', dataPath); } catch { fs.writeFileSync(dataPath, JSON.stringify(local)); } } }, async del(table, id) { if (supabase) { const { error } = await supabase.from('lingo_' + table).delete().eq('id', id); if (error) throw error; } else { if (local[table]) delete local[table][id]; fs.writeFileSync(dataPath, JSON.stringify(local)); } } };
 const SOCIAL_STATE_ID = '__lingo_social_state__';
-let socialDirectoryCache = null;
-const SOCIAL_DIRECTORY_TTL_MS = 8000;
 async function getSocialState() {
   const raw = await db.get('progress', SOCIAL_STATE_ID);
   const s = ensureSocialState(raw);
@@ -101,42 +99,97 @@ async function saveSocialState(s, { syncTables = null } = {}) {
   await db.set('progress', SOCIAL_STATE_ID, s);
   await syncSocialToSupabase(supabase, s, { tables: syncTables });
 }
-async function listAccountsAndProgress() {
+function normalizeAccountPayload(rawId, rawPayload) {
+  if (!rawId || !rawPayload) return null;
+  const acc = typeof rawPayload === 'string' ? JSON.parse(rawPayload) : { ...rawPayload };
+  if (!acc.username) acc.username = rawId;
+  if (!acc.lingoId) acc.lingoId = deriveLingoId(acc.username);
+  return acc;
+}
+async function getBatchAccountsAndProgress(usernames = [], { includeProgress = true } = {}) {
+  const ids = [...new Set((usernames || []).map(u => String(u || '').toLowerCase().trim()).filter(Boolean))];
+  const accountsMap = {};
+  const progressMap = {};
+  if (ids.length === 0) return { accountsMap, progressMap };
   if (supabase) {
-    if (socialDirectoryCache && (Date.now() - socialDirectoryCache.ts) < SOCIAL_DIRECTORY_TTL_MS) {
-      return socialDirectoryCache.value;
-    }
     const [accRes, progRes] = await Promise.all([
-      supabase.from('lingo_accounts').select('id, payload').limit(5000),
-      supabase.from('lingo_progress').select('id, payload').neq('id', SOCIAL_STATE_ID).limit(5000)
+      supabase.from('lingo_accounts').select('id, payload').in('id', ids),
+      includeProgress
+        ? supabase.from('lingo_progress').select('id, payload').in('id', ids)
+        : Promise.resolve({ data: [], error: null })
     ]);
     if (accRes.error) throw new Error('Failed to load accounts: ' + accRes.error.message);
     if (progRes.error) throw new Error('Failed to load progress: ' + progRes.error.message);
-    const accountsMap = {};
     for (const r of (accRes.data || [])) {
-      if (!r?.id || !r?.payload) continue;
-      const acc = typeof r.payload === 'string' ? JSON.parse(r.payload) : { ...r.payload };
-      if (!acc.username) acc.username = r.id;
-      if (!acc.lingoId) acc.lingoId = deriveLingoId(acc.username);
-      accountsMap[r.id] = acc;
+      const acc = normalizeAccountPayload(r?.id, r?.payload);
+      if (acc) accountsMap[r.id] = acc;
     }
-    const progressMap = {};
     for (const r of (progRes.data || [])) {
       if (!r?.id || !r?.payload) continue;
       progressMap[r.id] = typeof r.payload === 'string' ? JSON.parse(r.payload) : r.payload;
     }
-    const value = { accountsMap, progressMap };
-    socialDirectoryCache = { ts: Date.now(), value };
-    return value;
+    return { accountsMap, progressMap };
   }
-  const accountsMap = {};
-  for (const [k, v] of Object.entries(local.accounts || {})) {
-    if (!v) continue;
-    accountsMap[k] = { ...v, username: v.username || k, lingoId: v.lingoId || deriveLingoId(v.username || k) };
+  for (const uname of ids) {
+    const acc = normalizeAccountPayload(uname, local.accounts?.[uname]);
+    if (acc) accountsMap[uname] = acc;
+    if (includeProgress && uname !== SOCIAL_STATE_ID && local.progress?.[uname]) {
+      progressMap[uname] = structuredClone(local.progress[uname]);
+    }
   }
-  const progressMap = { ...(local.progress || {}) };
-  delete progressMap[SOCIAL_STATE_ID];
   return { accountsMap, progressMap };
+}
+async function findAccountByLingoId(rawLingoId) {
+  const targetId = String(rawLingoId || '').trim().toUpperCase();
+  if (!targetId) return null;
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('lingo_accounts')
+      .select('id, payload')
+      .eq('payload->>lingoId', targetId)
+      .limit(1)
+      .maybeSingle();
+    if (!error && data?.payload) {
+      return normalizeAccountPayload(data.id, data.payload);
+    }
+    const { data: candidates, error: candErr } = await supabase
+      .from('lingo_accounts')
+      .select('id, payload')
+      .ilike('payload->>lingoId', targetId)
+      .limit(5);
+    if (candErr) throw new Error('Failed to lookup user by Lingo ID: ' + candErr.message);
+    for (const r of (candidates || [])) {
+      const acc = normalizeAccountPayload(r?.id, r?.payload);
+      if (acc && acc.lingoId.toUpperCase() === targetId) return acc;
+    }
+    return null;
+  }
+  for (const [k, v] of Object.entries(local.accounts || {})) {
+    const acc = normalizeAccountPayload(k, v);
+    if (acc && acc.lingoId.toUpperCase() === targetId) return acc;
+  }
+  return null;
+}
+async function searchAccountsDirect(q, excludeUsername, limit = 40) {
+  if (supabase) {
+    const safePattern = String(q || '').replace(/[%_\\,()]/g, '').slice(0, 40);
+    if (safePattern.length < 2) return [];
+    const { data, error } = await supabase
+      .from('lingo_accounts')
+      .select('id, payload')
+      .neq('id', excludeUsername)
+      .or(`id.ilike.%${safePattern}%,payload->>lingoId.ilike.%${safePattern}%,payload->>name.ilike.%${safePattern}%`)
+      .limit(limit);
+    if (error) throw new Error('Search query failed: ' + error.message);
+    return (data || []).map(r => normalizeAccountPayload(r?.id, r?.payload)).filter(Boolean);
+  }
+  const out = [];
+  for (const [k, v] of Object.entries(local.accounts || {})) {
+    if (k === excludeUsername) continue;
+    const acc = normalizeAccountPayload(k, v);
+    if (acc) out.push(acc);
+  }
+  return out;
 }
 const id = () => randomBytes(16).toString('hex'); const hash = s => createHash('sha256').update(s).digest('hex'); const today = () => new Date().toISOString().slice(0, 10);
 
@@ -233,25 +286,59 @@ async function syncRelationalRewards(username, progress = {}) {
 const locks = new Map(); async function locked(key, fn) { const prior = locks.get(key) || Promise.resolve(); let release; const next = new Promise(r => release = r); locks.set(key, next); await prior; try { return await fn(); } finally { release(); if (locks.get(key) === next) locks.delete(key); } }
 const fail = (msg, status = 400) => { const e = Error(msg); e.status = status; throw e; };
 const route = fn => async (req, res, next) => { try { await fn(req, res); } catch (e) { next(e); } };
-const rate = new Map();
-app.use('/api/auth', (req, res, next) => {
-  if (process.env.NODE_ENV !== 'production' && (req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1')) return next();
-  const k = req.ip;
-  const t = Date.now();
-  let a = (rate.get(k) || []).filter(x => t - x < 60000);
-  if (a.length > 25) return res.status(429).json({ error: 'A little too fast! Try again in a minute.' });
-  a.push(t);
-  rate.set(k, a);
-  next();
-});
-setInterval(() => {
-  const t = Date.now();
-  for (const [k, a] of rate.entries()) {
-    const valid = a.filter(x => t - x < 60000);
-    if (valid.length === 0) rate.delete(k);
-    else rate.set(k, valid);
+const memRate = new Map();
+async function consumeRateLimit(bucket, key, limit, windowMs = 60000) {
+  const composite = `${bucket}:${key}`;
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.rpc('lingo_consume_rate_limit', {
+        p_key: composite,
+        p_limit: limit,
+        p_window_ms: windowMs
+      });
+      if (!error && data) {
+        const row = Array.isArray(data) ? data[0] : data;
+        if (typeof row?.allowed === 'boolean') return row.allowed;
+      }
+    } catch {
+      // Graceful fallback to local sliding window until proposed RPC migration is applied
+    }
   }
-}, 300000).unref();
+  const t = Date.now();
+  const prev = (memRate.get(composite) || []).filter(x => t - x < windowMs);
+  if (prev.length >= limit) {
+    memRate.set(composite, prev);
+    return false;
+  }
+  prev.push(t);
+  memRate.set(composite, prev);
+  if (memRate.size > 2000) {
+    for (const [k, arr] of memRate.entries()) {
+      if (!arr.some(x => t - x < 300000)) memRate.delete(k);
+    }
+  }
+  return true;
+}
+app.use('/api/auth', async (req, res, next) => {
+  if (process.env.NODE_ENV !== 'production' && (req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1')) return next();
+  try {
+    const ok = await consumeRateLimit('auth', req.ip || 'unknown', 25, 60000);
+    if (!ok) return res.status(429).json({ error: 'A little too fast! Try again in a minute.' });
+    next();
+  } catch (e) {
+    next(e);
+  }
+});
+if (!process.env.VERCEL) {
+  setInterval(() => {
+    const t = Date.now();
+    for (const [k, a] of memRate.entries()) {
+      const valid = a.filter(x => t - x < 300000);
+      if (valid.length === 0) memRate.delete(k);
+      else memRate.set(k, valid);
+    }
+  }, 300000).unref();
+}
 let testClockOffset = 0;
 const now = () => Date.now() + (process.env.NODE_ENV !== 'production' ? testClockOffset : 0);
 if (process.env.NODE_ENV !== 'production') {
@@ -262,7 +349,7 @@ if (process.env.NODE_ENV !== 'production') {
   });
   app.post('/api/test/reset-clock', (_, res) => {
     testClockOffset = 0;
-    rate.clear();
+    memRate.clear();
     res.json({ now: now(), offset: testClockOffset });
   });
   app.post('/api/test/set-ai-mock', (req, res) => {
@@ -804,16 +891,6 @@ app.post('/api/practice/pronunciation/submit', route(async (req, res) => {
     });
   });
 }));
-const aiBurstRate = new Map();
-function checkAiBurstRate(username) {
-  const t = Date.now();
-  const prev = (aiBurstRate.get(username) || []).filter(x => t - x < 60000);
-  if (prev.length >= 15) return false;
-  prev.push(t);
-  aiBurstRate.set(username, prev);
-  return true;
-}
-
 app.post('/api/ai/conversation', route(async (req, res) => {
   const { scenarioId, userMessage, history, level, allowFallback = true } = req.body || {};
   if (typeof scenarioId !== 'string' || !scenarioId.trim()) {
@@ -832,7 +909,7 @@ app.post('/api/ai/conversation', route(async (req, res) => {
   if (history !== undefined && !Array.isArray(history)) {
     fail('Conversation history must be an array.', 400);
   }
-  if (!checkAiBurstRate(req.user.username)) {
+  if (!(await consumeRateLimit('ai_convo', req.user.username, 15, 60000))) {
     fail('Too many AI conversation turns right now. Wait a minute before sending more.', 429);
   }
 
@@ -1841,7 +1918,7 @@ app.post('/api/social/profile', route(async (req, res) => {
 
 app.get('/api/social/overview', route(async (req, res) => {
   await locked('social:global', async () => {
-    const [s, directory] = await Promise.all([getSocialState(), listAccountsAndProgress()]);
+    const s = await getSocialState();
     const nowMs = now();
     const prevSeen = s.presence[req.user.username] || 0;
     s.presence[req.user.username] = nowMs;
@@ -1849,10 +1926,17 @@ app.get('/api/social/overview', route(async (req, res) => {
       await saveSocialState(s, { syncTables: [] });
     }
 
-    const { accountsMap, progressMap } = directory;
     const me = req.user.username;
-
     const friendNames = getFriendUsernames(s, me).filter(u => !isBlockedBetween(s, me, u));
+    const neededUsers = new Set([
+      ...friendNames,
+      ...s.friendRequests.filter(r => r.receiverId === me && r.status === 'pending').map(r => r.senderId),
+      ...s.friendRequests.filter(r => r.senderId === me && r.status === 'pending').map(r => r.receiverId),
+      ...s.blocks.filter(b => b.blockerId === me).map(b => b.blockedId),
+      ...s.communityInvitations.filter(inv => inv.inviteeId === me && inv.status === 'pending').map(inv => inv.inviterId),
+      ...s.gameInvitations.filter(gi => gi.receiverId === me && gi.status === 'pending').map(gi => gi.senderId)
+    ]);
+    const { accountsMap, progressMap } = await getBatchAccountsAndProgress([...neededUsers]);
     const friends = friendNames
       .map(uname => buildPublicProfileCard(accountsMap[uname], progressMap[uname], s.presence, nowMs))
       .filter(Boolean)
@@ -1963,21 +2047,8 @@ app.get('/api/social/overview', route(async (req, res) => {
   });
 }));
 
-const searchRate = new Map();
-function checkSearchRate(username) {
-  if (process.env.NODE_ENV !== 'production' && !username.startsWith('rate_')) {
-    // Allow normal unit tests unless testing search rate limit or large bursts > 40/min
-  }
-  const t = Date.now();
-  const prev = (searchRate.get(username) || []).filter(x => t - x < 60000);
-  if (prev.length >= 25) return false;
-  prev.push(t);
-  searchRate.set(username, prev);
-  return true;
-}
-
 app.get('/api/social/search', route(async (req, res) => {
-  if (!checkSearchRate(req.user.username)) {
+  if (!(await consumeRateLimit('social_search', req.user.username, 25, 60000))) {
     fail('Too many searches right now. Please wait a moment.', 429);
   }
   const rawQ = String(req.query.q || '').trim().toLowerCase();
@@ -1987,12 +2058,13 @@ app.get('/api/social/search', route(async (req, res) => {
   await locked('social:global', async () => {
     const s = await getSocialState();
     const nowMs = now();
-    const { accountsMap, progressMap } = await listAccountsAndProgress();
     const me = req.user.username;
+    const candidates = await searchAccountsDirect(q, me, 50);
     const myFriends = new Set(getFriendUsernames(s, me));
 
     const scored = [];
-    for (const acc of Object.values(accountsMap)) {
+    const matchedFriendIds = [];
+    for (const acc of candidates) {
       if (!acc || acc.username === me) continue;
       if (isBlockedBetween(s, me, acc.username)) continue;
       const lingoId = (acc.lingoId || deriveLingoId(acc.username)).toLowerCase();
@@ -2005,29 +2077,33 @@ app.get('/api/social/search', route(async (req, res) => {
       else if (uname.includes(q) || lingoId.includes(q) || dname.includes(q)) score = 1;
 
       if (score > 0) {
-        const isFriend = myFriends.has(acc.username);
-        const friendStatus = getFriendStatus(s, me, acc.username);
-        if (isFriend) {
-          const card = buildPublicProfileCard(acc, progressMap[acc.username], s.presence, nowMs);
-          delete card.lastActiveAt;
-          scored.push({ score, item: { ...card, friendStatus } });
-        } else {
-          scored.push({
-            score,
-            item: {
-              username: acc.username,
-              lingoId: acc.lingoId || deriveLingoId(acc.username),
-              name: acc.name || acc.username,
-              avatar: acc.avatar || '🌱',
-              avatarColor: acc.avatarColor || 'lime',
-              friendStatus
-            }
-          });
-        }
+        if (myFriends.has(acc.username)) matchedFriendIds.push(acc.username);
+        scored.push({ score, acc });
       }
     }
-    scored.sort((a, b) => b.score - a.score || a.item.username.localeCompare(b.item.username));
-    res.json({ users: scored.slice(0, 20).map(x => x.item) });
+    const { progressMap } = await getBatchAccountsAndProgress(matchedFriendIds, { includeProgress: true });
+    const mapped = scored.map(({ score, acc }) => {
+      const isFriend = myFriends.has(acc.username);
+      const friendStatus = getFriendStatus(s, me, acc.username);
+      if (isFriend) {
+        const card = buildPublicProfileCard(acc, progressMap[acc.username], s.presence, nowMs);
+        delete card.lastActiveAt;
+        return { score, item: { ...card, friendStatus } };
+      }
+      return {
+        score,
+        item: {
+          username: acc.username,
+          lingoId: acc.lingoId || deriveLingoId(acc.username),
+          name: acc.name || acc.username,
+          avatar: acc.avatar || '🌱',
+          avatarColor: acc.avatarColor || 'lime',
+          friendStatus
+        }
+      };
+    });
+    mapped.sort((a, b) => b.score - a.score || a.item.username.localeCompare(b.item.username));
+    res.json({ users: mapped.slice(0, 20).map(x => x.item) });
   });
 }));
 
@@ -2040,7 +2116,7 @@ app.get('/api/social/users/:username', route(async (req, res) => {
     if (target !== me && isBlockedBetween(s, me, target)) {
       fail('You cannot view this profile.', 403);
     }
-    const { accountsMap, progressMap } = await listAccountsAndProgress();
+    const { accountsMap, progressMap } = await getBatchAccountsAndProgress([target]);
     const acc = accountsMap[target];
     if (!acc) fail('User not found.', 404);
     const prog = progressMap[target];
@@ -2102,11 +2178,7 @@ app.post('/api/social/friends/request', route(async (req, res) => {
       targetAcc = await db.get('accounts', cleanUname);
       if (targetAcc && !targetAcc.username) targetAcc.username = cleanUname;
     } else if (typeof lingoId === 'string' && lingoId.trim()) {
-      const targetId = lingoId.trim().toUpperCase();
-      const { accountsMap } = await listAccountsAndProgress();
-      targetAcc = Object.values(accountsMap).find(
-        a => (a.lingoId || deriveLingoId(a.username)).toUpperCase() === targetId
-      );
+      targetAcc = await findAccountByLingoId(lingoId);
     }
 
     if (!targetAcc) fail('User not found.', 404);
@@ -2356,11 +2428,17 @@ app.get('/api/communities/:id', route(async (req, res) => {
       fail('You cannot view this community.', 403);
     }
 
-    const { accountsMap, progressMap } = await listAccountsAndProgress();
+    const commMemberRows = s.communityMembers.filter(m => m.communityId === commId);
+    const commInviteRows = s.communityInvitations.filter(i => i.communityId === commId && i.status === 'pending');
+    const commUserIds = [
+      ...commMemberRows.map(m => m.userId),
+      ...commInviteRows.map(i => i.inviteeId)
+    ];
+    const { accountsMap, progressMap } = await getBatchAccountsAndProgress(commUserIds);
     const nowMs = now();
 
-    const members = s.communityMembers
-      .filter(m => m.communityId === commId && accountsMap[m.userId] && (m.userId === me || !isBlockedBetween(s, me, m.userId)))
+    const members = commMemberRows
+      .filter(m => accountsMap[m.userId] && (m.userId === me || !isBlockedBetween(s, me, m.userId)))
       .map(m => ({
         ...buildPublicProfileCard(accountsMap[m.userId], progressMap[m.userId], s.presence, nowMs),
         role: m.role,
@@ -2462,13 +2540,15 @@ app.post('/api/communities/:id/invite', route(async (req, res) => {
       fail('Only community owners and admins can invite new members.', 403);
     }
 
-    const { accountsMap } = await listAccountsAndProgress();
+    const targetList = (Array.isArray(usernames) ? usernames : [])
+      .map(rawU => String(rawU || '').toLowerCase().trim())
+      .filter(Boolean);
+    const { accountsMap } = await getBatchAccountsAndProgress(targetList, { includeProgress: false });
     const nowIso = new Date(now()).toISOString();
     const expIso = new Date(now() + INVITE_TTL_MS).toISOString();
     const invited = [];
 
-    for (const rawU of (Array.isArray(usernames) ? usernames : [])) {
-      const target = String(rawU || '').toLowerCase().trim();
+    for (const target of targetList) {
       if (!target || target === me || !accountsMap[target]) continue;
       if (isBlockedBetween(s, me, target) || isBlockedBetween(s, comm.ownerId, target)) continue;
       if (!areFriends(s, me, target)) continue;
@@ -2676,7 +2756,6 @@ app.post('/api/games/:code/invite', route(async (req, res) => {
     await locked('social:global', async () => {
       const s = await getSocialState();
       const me = req.user.username;
-      const { accountsMap } = await listAccountsAndProgress();
 
       const candidateSet = new Set();
       if (mode === 'all_friends') {
@@ -2697,6 +2776,8 @@ app.post('/api/games/:code/invite', route(async (req, res) => {
           if (u) candidateSet.add(u);
         }
       }
+      const existingInviteUserIds = s.gameInvitations.filter(gi => gi.gameId === code).map(gi => gi.receiverId);
+      const { accountsMap } = await getBatchAccountsAndProgress([...candidateSet, ...existingInviteUserIds], { includeProgress: false });
 
       const nowIso = new Date(now()).toISOString();
       const expIso = new Date(now() + GAME_INVITE_TTL_MS).toISOString();
@@ -2783,9 +2864,9 @@ app.get('/api/games/:code/invites', route(async (req, res) => {
 
   await locked('social:global', async () => {
     const s = await getSocialState();
-    const { accountsMap } = await listAccountsAndProgress();
-    const invites = s.gameInvitations
-      .filter(gi => gi.gameId === code)
+    const roomInvs = s.gameInvitations.filter(gi => gi.gameId === code);
+    const { accountsMap } = await getBatchAccountsAndProgress(roomInvs.map(gi => gi.receiverId), { includeProgress: false });
+    const invites = roomInvs
       .map(gi => ({
         ...gi,
         receiverName: accountsMap[gi.receiverId]?.name || gi.receiverId,
