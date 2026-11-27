@@ -486,7 +486,7 @@ export async function syncDailyDeviceReminders({ user, progress }) {
   }
 
   if (prefs.enabled && typeof window !== 'undefined' && 'Notification' in window && window.Notification.permission === 'granted') {
-    const todayKey = new Date().toISOString().slice(0, 10);
+    const todayKey = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const lastSent = localStorage.getItem(WEB_DAILY_SENT_KEY);
     if (lastSent !== todayKey) {
       const hr = new Date().getHours();

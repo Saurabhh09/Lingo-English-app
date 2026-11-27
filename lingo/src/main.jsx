@@ -1489,7 +1489,7 @@ function App() {
                       {Array.from({ length: 7 }, (_, i) => {
                         const d = new Date();
                         d.setDate(d.getDate() - 6 + i);
-                        const date = d.toISOString().slice(0, 10), v = progress.history[date] || 0;
+                        const date = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(d), v = (progress.history || {})[date] || 0;
                         return (
                           <div key={i} className={'chart-day ' + (i === 6 ? 'today' : '')}>
                             <span className="chart-value">{v || ''}</span>

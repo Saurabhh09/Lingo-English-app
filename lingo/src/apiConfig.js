@@ -29,11 +29,20 @@ export function getApiUrl(path) {
   return `${API_BASE}${cleanPath}`;
 }
 
+function getClientTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
 export async function requestApi(path, { body, method, token } = {}) {
   const cleanPath = path.startsWith('/api') ? path : '/api' + (path.startsWith('/') ? path : '/' + path);
   const fullUrl = getApiUrl(cleanPath);
   const headers = {
     'Content-Type': 'application/json',
+    'X-Timezone': getClientTimezone(),
     ...(token ? { Authorization: 'Bearer ' + token } : {})
   };
   const httpMethod = method || (body ? 'POST' : 'GET');
