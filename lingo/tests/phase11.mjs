@@ -209,7 +209,8 @@ console.log(`✓ AI status endpoint working (Configured: ${aiStatus.data.configu
 if (!aiStatus.data.configured) {
   const unconfiguredChat = await request('/ai/conversation', {
     scenarioId: 'conv_cafe_01',
-    userMessage: 'Hello, what drinks do you have?'
+    userMessage: 'Hello, what drinks do you have?',
+    allowFallback: false
   }, token);
   assert.equal(unconfiguredChat.status, 503, 'Unconfigured AI must return HTTP 503');
   assert.ok(unconfiguredChat.data.error, 'Must provide setup message');

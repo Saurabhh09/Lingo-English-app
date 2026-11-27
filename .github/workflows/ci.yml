@@ -79,6 +79,7 @@ jobs:
           ISOLATED_TEST: '1'
           PORT: '3000'
           DATA_PATH: /tmp/lingo-ci-data.json
+          ADMIN_USERNAMES: alice_admin
         run: |
           node lingo/server.mjs &
           SRV_PID=$!

@@ -339,7 +339,8 @@ assert.equal(aiStatus.data.apiKey, undefined, 'API key must not be exposed');
 if (!aiStatus.data.configured) {
   const fallbackChat = await request('/ai/conversation', {
     scenarioId: scenarios[0].id,
-    userMessage: 'Hello, what drinks are available?'
+    userMessage: 'Hello, what drinks are available?',
+    allowFallback: false
   }, userToken);
   assert.equal(fallbackChat.status, 503, 'Unconfigured AI returns clean 503 with setup instructions');
   assert.ok(fallbackChat.data.error, 'Helpful configuration error message provided');
