@@ -1,0 +1,103 @@
+name: Lingo CI
+
+on:
+  push:
+    branches: [main, security-hardening]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: lingo/package-lock.json
+
+      - name: Install dependencies
+        run: npm --prefix lingo ci
+
+      - name: Check JS syntax across server modules
+        run: |
+          node --check lingo/server.mjs
+          for f in lingo/server/*.mjs; do node --check "$f"; done
+
+      - name: Secret & tracked file guard
+        run: |
+          if git ls-files | grep -E '(^|/)\.env($|\.(local|development|production\.local))|_metadata\.json|\.jks$|\.keystore$'; then
+            echo "ERROR: Forbidden environment or keystore file is tracked in git!"
+            exit 1
+          fi
+
+      - name: Build production client bundle & verify no sourcemaps or leaked secrets
+        run: |
+          npm --prefix lingo run build
+          if find lingo/dist -name '*.map' | grep -q .; then
+            echo "ERROR: Unexpected source map found in lingo/dist"
+            exit 1
+          fi
+          if grep -rnE 'AIzaSy[0-9A-Za-z_-]{20,}|sb_secret_|SUPABASE_SERVICE_ROLE_KEY' lingo/dist; then
+            echo "ERROR: Secret material leaked into client bundle!"
+            exit 1
+          fi
+
+      - name: Dependency vulnerability audit (high+)
+        run: npm --prefix lingo audit --audit-level=high
+
+      - name: Install Playwright Chromium
+        run: npx --prefix lingo playwright install chromium
+
+      - name: Run isolated security, bug-repro, social, reward, and UI suites
+        env:
+          CI: 'true'
+          ISOLATED_TEST: '1'
+        run: |
+          node lingo/tests/security-audit-matrix.mjs
+          node lingo/tests/bug-hunt-repros.mjs
+          npm --prefix lingo run test:e2e
+          npm --prefix lingo run test:matrix
+          npm --prefix lingo run test:phase1
+          npm --prefix lingo run test:phase2-config
+          npm --prefix lingo run test:phase2-ui
+          npm --prefix lingo run test:phase3-ui
+          npm --prefix lingo run test:phase5-ui
+          node lingo/tests/social-system-verify.mjs
+          node lingo/tests/rewards-system.mjs
+          node lingo/tests/option-shuffling-verify.mjs
+          node lingo/tests/phase2-lifecycle.mjs
+          node lingo/tests/phase3-solo-friends.mjs
+          node lingo/tests/phase3-acceptance.mjs
+          node lingo/tests/phase4-llm-questions.mjs
+          node lingo/tests/phase5-multiplayer-sync.mjs
+
+      - name: Run server-backed curriculum & lesson engine suites (ISOLATED_TEST=1)
+        env:
+          ISOLATED_TEST: '1'
+          PORT: '3000'
+        run: |
+          node --prefix lingo server.mjs &
+          SRV_PID=$!
+          trap "kill $SRV_PID || true" EXIT
+          for i in $(seq 1 40); do
+            if curl -sf http://127.0.0.1:3000/api/health >/dev/null; then break; fi
+            sleep 0.25
+          done
+          npm --prefix lingo run test:api
+          npm --prefix lingo run test:curriculum
+          npm --prefix lingo run test:phase10
+          npm --prefix lingo run test:phase11
+          node lingo/tests/shared-learning-experience.mjs
+          node lingo/tests/comprehensive-regression-suite.mjs
+          node lingo/tests/curriculum-reconciliation.mjs
+          node lingo/tests/b1-curriculum.mjs
+          node lingo/tests/b2-curriculum.mjs
+          node lingo/tests/c1-curriculum.mjs
+          node lingo/tests/c2-curriculum.mjs
