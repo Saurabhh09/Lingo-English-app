@@ -1343,7 +1343,11 @@ function App() {
                   href={`${apkRelease?.downloadPath || '/lingo.apk'}?v=${apkRelease?.sha256 ? apkRelease.sha256.slice(0, 12) : (apkRelease?.versionCode || 1)}`}
                   download={apkRelease?.downloadFilename || 'lingo.apk'}
                   className="topbar-download-btn"
-                  title={`Download Android App v${apkRelease?.versionName || '1.0'} (APK)`}
+                  title={
+                    apkRelease?.sha256
+                      ? `Download Android App v${apkRelease?.versionName || '1.0'} (APK · SHA-256: ${String(apkRelease.sha256).slice(0, 12)}…)`
+                      : `Download Android App v${apkRelease?.versionName || '1.0'} (APK)`
+                  }
                   aria-label="Download Android app"
                 >
                   <Download size={16} />
