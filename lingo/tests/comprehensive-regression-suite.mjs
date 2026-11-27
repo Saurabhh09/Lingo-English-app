@@ -200,7 +200,7 @@ const createGame = await req(TEST_URL, '/games', {
 }, tokA);
 assert.equal(createGame.status, 200);
 const code = createGame.data.code;
-assert.match(code, /^[A-F0-9]{6}$/, 'Room code must be 6 hex characters');
+assert.match(code, /^[A-Z0-9]{6}$/, 'Room code must be 6 alphanumeric characters');
 
 // Guest joins game
 const joinGame = await req(TEST_URL, '/games/join', { code }, tokB);

@@ -352,7 +352,7 @@ console.log('✓ AI provider status reporting and unconfigured 503 fallback veri
 console.log('\n[SECTION 5: LOCAL DATA.JSON PERSISTENCE & RESTART INTEGRITY]');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dataPath = path.resolve(__dirname, '../data.json');
+const dataPath = process.env.DATA_PATH ? path.resolve(process.env.DATA_PATH) : path.resolve(__dirname, '../data.json');
 assert.ok(fs.existsSync(dataPath), `data.json must exist at ${dataPath}`);
 
 const rawData = fs.readFileSync(dataPath, 'utf8');
