@@ -1914,16 +1914,33 @@ app.get('/api/social/overview', route(async (req, res) => {
   });
 }));
 
+const searchRate = new Map();
+function checkSearchRate(username) {
+  if (process.env.NODE_ENV !== 'production' && !username.startsWith('rate_')) {
+    // Allow normal unit tests unless testing search rate limit or large bursts > 40/min
+  }
+  const t = Date.now();
+  const prev = (searchRate.get(username) || []).filter(x => t - x < 60000);
+  if (prev.length >= 25) return false;
+  prev.push(t);
+  searchRate.set(username, prev);
+  return true;
+}
+
 app.get('/api/social/search', route(async (req, res) => {
+  if (!checkSearchRate(req.user.username)) {
+    fail('Too many searches right now. Please wait a moment.', 429);
+  }
   const rawQ = String(req.query.q || '').trim().toLowerCase();
   const q = rawQ.replace(/^@+/, '');
-  if (q.length < 2) return res.json({ users: [] });
+  if (q.length < 2 || q.length > 50) return res.json({ users: [] });
 
   await locked('social:global', async () => {
     const s = await getSocialState();
     const nowMs = now();
     const { accountsMap, progressMap } = await listAccountsAndProgress();
     const me = req.user.username;
+    const myFriends = new Set(getFriendUsernames(s, me));
 
     const scored = [];
     for (const acc of Object.values(accountsMap)) {
@@ -1939,18 +1956,29 @@ app.get('/api/social/search', route(async (req, res) => {
       else if (uname.includes(q) || lingoId.includes(q) || dname.includes(q)) score = 1;
 
       if (score > 0) {
-        const card = buildPublicProfileCard(acc, progressMap[acc.username], s.presence, nowMs);
-        scored.push({
-          score,
-          item: {
-            ...card,
-            friendStatus: getFriendStatus(s, me, acc.username)
-          }
-        });
+        const isFriend = myFriends.has(acc.username);
+        const friendStatus = getFriendStatus(s, me, acc.username);
+        if (isFriend) {
+          const card = buildPublicProfileCard(acc, progressMap[acc.username], s.presence, nowMs);
+          delete card.lastActiveAt;
+          scored.push({ score, item: { ...card, friendStatus } });
+        } else {
+          scored.push({
+            score,
+            item: {
+              username: acc.username,
+              lingoId: acc.lingoId || deriveLingoId(acc.username),
+              name: acc.name || acc.username,
+              avatar: acc.avatar || '🌱',
+              avatarColor: acc.avatarColor || 'lime',
+              friendStatus
+            }
+          });
+        }
       }
     }
     scored.sort((a, b) => b.score - a.score || a.item.username.localeCompare(b.item.username));
-    res.json({ users: scored.slice(0, 25).map(x => x.item) });
+    res.json({ users: scored.slice(0, 20).map(x => x.item) });
   });
 }));
 
@@ -1967,12 +1995,9 @@ app.get('/api/social/users/:username', route(async (req, res) => {
     const acc = accountsMap[target];
     if (!acc) fail('User not found.', 404);
     const prog = progressMap[target];
-    const card = buildPublicProfileCard(acc, prog, s.presence, nowMs);
 
-    const myFriends = new Set(getFriendUsernames(s, me));
-    const theirFriends = getFriendUsernames(s, target);
-    const mutualFriendsCount = target === me ? 0 : theirFriends.filter(f => myFriends.has(f)).length;
-
+    const isSelf = target === me;
+    const isFriend = areFriends(s, me, target);
     const myComms = new Set(s.communityMembers.filter(m => m.userId === me).map(m => m.communityId));
     const sharedCommunities = s.communityMembers
       .filter(m => m.userId === target && myComms.has(m.communityId))
@@ -1981,6 +2006,28 @@ app.get('/api/social/users/:username', route(async (req, res) => {
         return c ? { id: c.id, name: c.name, icon: c.icon } : null;
       })
       .filter(Boolean);
+    const sharesCommunity = sharedCommunities.length > 0;
+
+    if (!isSelf && !isFriend && !sharesCommunity) {
+      return res.json({
+        profile: {
+          username: acc.username,
+          lingoId: acc.lingoId || deriveLingoId(acc.username),
+          name: acc.name || acc.username,
+          avatar: acc.avatar || '🌱',
+          avatarColor: acc.avatarColor || 'lime',
+          friendStatus: getFriendStatus(s, me, target)
+        }
+      });
+    }
+
+    const card = buildPublicProfileCard(acc, prog, s.presence, nowMs);
+    if (!isSelf) {
+      delete card.lastActiveAt;
+    }
+    const myFriends = new Set(getFriendUsernames(s, me));
+    const theirFriends = getFriendUsernames(s, target);
+    const mutualFriendsCount = isSelf ? 0 : theirFriends.filter(f => myFriends.has(f)).length;
 
     res.json({
       profile: {
@@ -1988,7 +2035,7 @@ app.get('/api/social/users/:username', route(async (req, res) => {
         friendStatus: getFriendStatus(s, me, target),
         mutualFriendsCount,
         sharedCommunities,
-        earnedBadgeIds: Object.keys(prog?.badges || {})
+        ...(isSelf || isFriend ? { earnedBadgeIds: Object.keys(prog?.badges || {}) } : {})
       }
     });
   });

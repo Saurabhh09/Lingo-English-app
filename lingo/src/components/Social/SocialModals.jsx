@@ -64,15 +64,17 @@ export function FriendProfileModal({ api, username, notify, onClose, onChanged, 
               <span className={`avatar large ${profile.avatarColor || 'lime'}`}>{profile.avatar || '🌱'}</span>
               <h3>{profile.name}</h3>
               <span className="fp-handle">@{profile.username} · {profile.lingoId}</span>
-              <span className="sf-cefr-pill">{profile.cefrLevel} Learner</span>
+              {profile.cefrLevel && <span className="sf-cefr-pill">{profile.cefrLevel} Learner</span>}
             </div>
 
-            <div className="fp-stats-grid">
-              <div className="fp-stat"><Zap size={16} /><strong>{profile.xp}</strong><span>XP</span></div>
-              <div className="fp-stat"><Flame size={16} /><strong>{profile.streak}d</strong><span>Streak</span></div>
-              <div className="fp-stat"><BookOpen size={16} /><strong>{profile.lessonsCompleted}</strong><span>Lessons</span></div>
-              <div className="fp-stat"><Trophy size={16} /><strong>{profile.badgesCount}</strong><span>Badges</span></div>
-            </div>
+            {Number.isFinite(profile.xp) && (
+              <div className="fp-stats-grid">
+                <div className="fp-stat"><Zap size={16} /><strong>{profile.xp}</strong><span>XP</span></div>
+                <div className="fp-stat"><Flame size={16} /><strong>{profile.streak}d</strong><span>Streak</span></div>
+                <div className="fp-stat"><BookOpen size={16} /><strong>{profile.lessonsCompleted}</strong><span>Lessons</span></div>
+                <div className="fp-stat"><Trophy size={16} /><strong>{profile.badgesCount}</strong><span>Badges</span></div>
+              </div>
+            )}
 
             {(profile.sharedCommunities || []).length > 0 && (
               <div className="fp-shared-comms">

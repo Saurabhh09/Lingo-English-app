@@ -679,13 +679,15 @@ export function FriendsPage({
                     <div className="sf-meta">
                       <div className="sf-name-row">
                         <b>{u.name}</b>
-                        <span className="sf-cefr-pill">{u.cefrLevel}</span>
+                        {u.cefrLevel && <span className="sf-cefr-pill">{u.cefrLevel}</span>}
                       </div>
                       <span className="sf-handle">@{u.username} · {u.lingoId}</span>
-                      <div className="sf-stats-line">
-                        <span><Zap size={12} fill="currentColor" /> {u.xp} XP</span>
-                        <span><Flame size={12} /> {u.streak}d streak</span>
-                      </div>
+                      {(Number.isFinite(u.xp) || Number.isFinite(u.streak)) && (
+                        <div className="sf-stats-line">
+                          {Number.isFinite(u.xp) && <span><Zap size={12} fill="currentColor" /> {u.xp} XP</span>}
+                          {Number.isFinite(u.streak) && <span><Flame size={12} /> {u.streak}d streak</span>}
+                        </div>
+                      )}
                     </div>
                   </div>
 
