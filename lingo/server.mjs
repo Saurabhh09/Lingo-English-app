@@ -33,6 +33,7 @@ import {
   INVITE_TTL_MS,
   GAME_INVITE_TTL_MS
 } from './server/socialEngine.mjs';
+import { validateRuntimeEnv, logStructured, reportErrorToSentry } from './server/envSchema.mjs';
 
 const PRESET_TOPIC_NAMES = new Set([
   'Mixed English',
@@ -54,6 +55,10 @@ if (fs.existsSync(path.join(root, '.env')) && process.env.LINGO_NO_DOTENV !== '1
       process.env[m[1]] = m[2] ? m[2].trim().replace(/^['"](.*)['"]$/, '$1') : '';
     }
   }
+}
+const envSummary = validateRuntimeEnv(process.env);
+for (const w of envSummary.warnings) {
+  logStructured('warn', 'env_warning', { message: w });
 }
 const app = express();
 app.set('trust proxy', 1);
@@ -466,8 +471,48 @@ const CACHED_PUBLIC_LEVELS = getPublicLevels();
 const CACHED_PUBLIC_PRACTICE = getPublicPracticeCatalog();
 const CACHED_BADGES_CATALOG = { categories: BADGE_CATEGORIES, badges: BADGE_CATALOG };
 const CACHED_REWARDS_CATALOG = { rewards: REWARD_DEFINITIONS };
-app.get('/api/health', (_, res) => res.json({ status: 'ok', uptime: Math.floor(process.uptime()), timestamp: now(), database: connected ? 'supabase' : 'demo' }));
+const readPublicApkManifest = () => {
+  for (const candidate of [path.join(root, 'releases', 'apk-manifest.json'), path.join(root, 'dist', 'apk-manifest.json')]) {
+    try {
+      if (fs.existsSync(candidate)) {
+        return JSON.parse(fs.readFileSync(candidate, 'utf8'));
+      }
+    } catch { }
+  }
+  return null;
+};
+app.get('/api/health', async (_, res) => {
+  let dbReady = true;
+  if (supabase) {
+    try {
+      const { error } = await supabase.from('lingo_accounts').select('id').limit(1);
+      dbReady = !error;
+    } catch {
+      dbReady = false;
+    }
+  }
+  const status = dbReady ? 'ok' : 'degraded';
+  res.status(dbReady ? 200 : 503).json({
+    status,
+    ready: dbReady,
+    uptime: Math.floor(process.uptime()),
+    timestamp: now(),
+    database: connected ? 'supabase' : 'demo'
+  });
+});
 app.get('/api/config', (_, res) => res.json({ database: connected ? 'supabase' : 'demo', app: 'Lingo' }));
+app.get('/api/app/version', (_, res) => {
+  const manifest = readPublicApkManifest();
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    versionCode: Number(manifest?.versionCode || 1),
+    versionName: String(manifest?.versionName || '1.0.0'),
+    minVersionCode: Number(process.env.MIN_APK_VERSION_CODE || 1),
+    downloadUrl: manifest?.downloadPath || '/lingo.apk',
+    downloadFilename: manifest?.downloadFilename || 'lingo.apk',
+    sha256: manifest?.sha256 || null
+  });
+});
 app.get('/api/curriculum/levels', (_, res) => { res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=600'); res.json(CACHED_PUBLIC_LEVELS); });
 app.get('/api/curriculum/lessons/batch', (req, res) => {
   const rawIds = String(req.query.ids || '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 12);
@@ -3157,8 +3202,16 @@ app.post('/api/notifications/read', route(async (req, res) => {
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'API endpoint not found.' }));
 app.use((err, req, res, next) => {
-  console.error(err.message);
   const status = err.status || 500;
+  logStructured(status >= 500 ? 'error' : 'warn', 'api_request_error', {
+    method: req.method,
+    path: req.path,
+    status,
+    message: err.message
+  });
+  if (status >= 500) {
+    reportErrorToSentry(err, { method: req.method, path: req.path, status }).catch(() => { });
+  }
   const message = (status < 500 || process.env.NODE_ENV !== 'production')
     ? (err.status ? err.message : 'Something went wrong. ' + err.message)
     : 'Internal server error. Please try again.';
