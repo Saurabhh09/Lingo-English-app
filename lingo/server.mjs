@@ -628,7 +628,7 @@ app.post('/api/auth/change-password', route(async (req, res) => {
     freshUser.tokenVersion = (freshUser.tokenVersion ?? 0) + 1;
     await db.set('accounts', freshUser.username, freshUser);
     if (req.sessionKey) {
-      await db.del('sessions', req.sessionKey).catch(() => {});
+      await db.del('sessions', req.sessionKey).catch(() => { });
     }
     const nextToken = await session(freshUser);
     const progress = await db.get('progress', freshUser.username);
@@ -1555,7 +1555,8 @@ app.post('/api/games/solo', route(async (req, res) => {
 
     let questions;
     if (isCustomTopic) {
-      questions = await generateQuestionSet(validatedConfig, { allowFallback: false });
+      const allowFallback = req.body.allowFallback !== false && req.body.metadata?.allowFallback !== false;
+      questions = await generateQuestionSet(validatedConfig, { allowFallback });
     } else if (hasQuestionGeneratorMock()) {
       const allowFallback = req.body.allowFallback !== false && req.body.metadata?.allowFallback !== false;
       questions = await generateQuestionSet(validatedConfig, { allowFallback });
@@ -1772,7 +1773,8 @@ app.post('/api/games', route(async (req, res) => {
 
     let questions;
     if (isCustomTopic) {
-      questions = await generateQuestionSet(validatedConfig, { allowFallback: false });
+      const allowFallback = req.body.allowFallback !== false && req.body.metadata?.allowFallback !== false;
+      questions = await generateQuestionSet(validatedConfig, { allowFallback });
     } else if (hasQuestionGeneratorMock()) {
       const allowFallback = req.body.allowFallback !== false && req.body.metadata?.allowFallback !== false;
       questions = await generateQuestionSet(validatedConfig, { allowFallback });

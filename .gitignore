@@ -14,6 +14,7 @@ lingo/data.json*
 lingo/scratch/*data*.json
 lingo/uploads/*.png
 *.apk
+!lingo/releases/lingo.apk
 *.jks
 *.keystore
 keystore.properties

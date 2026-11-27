@@ -605,6 +605,10 @@ function App() {
 
   function navigate(next) {
     if (next === page) return;
+    if (isNative && game && next !== 'games') {
+      notify('Leave or finish the current game before switching tabs.');
+      return;
+    }
     setDirection(pages.indexOf(next) > pages.indexOf(page) ? 1 : -1);
     setPage(next);
     setSearch('');
@@ -787,7 +791,12 @@ function App() {
         else if (extra?.route === 'practice') navigate('practice');
         else if (extra?.route === 'learn') navigate('learn');
       }
-    }).then(state => setNotifPermission(state)).catch(() => { });
+    }).then(state => {
+      setNotifPermission(state);
+      if (state === 'granted' && user && progress) {
+        syncDailyDeviceReminders({ user, progress }).catch(() => { });
+      }
+    }).catch(() => { });
     getDeviceNotificationPermissionState().then(setNotifPermission).catch(() => { });
   }, [user?.username]);
 
@@ -1138,6 +1147,21 @@ function App() {
               Sign in
             </button>
           </div>
+
+          {!isNative && (
+            <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'center' }}>
+              <a
+                href={`${apkRelease?.downloadPath || '/lingo.apk'}?v=${apkRelease?.sha256 ? apkRelease.sha256.slice(0, 12) : (apkRelease?.versionCode || 1)}`}
+                download={apkRelease?.downloadFilename || 'lingo.apk'}
+                className="social-pill-btn"
+                style={{ textDecoration: 'none', width: 'auto', padding: '10px 18px', gap: '8px' }}
+                aria-label="Download Android app"
+              >
+                <Download size={16} />
+                <span>Download Android App (v{apkRelease?.versionName || '1.0'})</span>
+              </a>
+            </div>
+          )}
         </div>
 
         {/* Modal when user chooses to login or sign up */}
@@ -1384,14 +1408,14 @@ function App() {
         <main
           className={`app-main ${page === 'home' ? 'home-main' : page === 'learn' ? 'learn-main' : page === 'profile' ? 'profile-main' : 'interior-main'}`}
           onTouchStart={e => {
-            if (page === 'practice' || page === 'reminders' || e.target.closest('.practice-nav-tabs, .practice-page, .horizontal-scroll, [data-no-swipe]')) {
+            if ((isNative && game) || page === 'practice' || page === 'reminders' || e.target.closest('.practice-nav-tabs, .practice-page, .horizontal-scroll, [data-no-swipe]')) {
               touch.current = null;
               return;
             }
             touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
           }}
           onTouchEnd={e => {
-            if (!touch.current || modal || page === 'practice' || page === 'reminders') return;
+            if (!touch.current || modal || (isNative && game) || page === 'practice' || page === 'reminders') return;
             const dx = e.changedTouches[0].clientX - touch.current.x, dy = e.changedTouches[0].clientY - touch.current.y;
             if (Math.abs(dx) > 110 && Math.abs(dx) > Math.abs(dy) * 2.5) {
               const i = navPages.indexOf(page);
@@ -2022,14 +2046,20 @@ function App() {
         ].map(([Icon, key, label]) => {
           const isActive = page === key || (key === 'profile' && page === 'reminders');
           const showFriendsBadge = key === 'friends' && socialUnreadCount > 0;
+          const isTabLocked = isNative && Boolean(game) && key !== 'games';
           return (
             <button
               key={key}
+              disabled={isTabLocked}
               onClick={() => {
+                if (isTabLocked) {
+                  notify('Leave or finish the current game before switching tabs.');
+                  return;
+                }
                 if (modal) setModal(null);
                 navigate(key);
               }}
-              className={`mobile-nav-btn ${isActive ? 'active' : ''}`}
+              className={`mobile-nav-btn ${isActive ? 'active' : ''} ${isTabLocked ? 'locked' : ''}`}
               aria-label={label}
               data-testid={`nav-${key}`}
             >

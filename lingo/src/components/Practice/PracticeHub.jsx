@@ -8,29 +8,51 @@ import { AIConversationTutor } from './AIConversationTutor.jsx';
 import { fetchWithSWR, getSyncCache } from '../../services/dataCache.js';
 import './practice.css';
 
+function isValidPracticeCatalog(data) {
+  return Boolean(
+    data &&
+    Array.isArray(data.listening) &&
+    Array.isArray(data.speaking) &&
+    Array.isArray(data.pronunciation) &&
+    Array.isArray(data.scenarios)
+  );
+}
+
 export function PracticeHub({ progress, updateProgress, api }) {
   const [activeTab, setActiveTab] = useState('listening'); // 'listening' | 'speaking' | 'pronunciation' | 'ai'
-  const [catalog, setCatalog] = useState(() => getSyncCache('practice:catalog'));
-  const [loading, setLoading] = useState(() => !getSyncCache('practice:catalog'));
+  const initialCached = getSyncCache('practice:catalog');
+  const [catalog, setCatalog] = useState(() => (isValidPracticeCatalog(initialCached) ? initialCached : null));
+  const [loading, setLoading] = useState(() => !isValidPracticeCatalog(initialCached));
   const [error, setError] = useState('');
+  const [reloadSeq, setReloadSeq] = useState(0);
 
   useEffect(() => {
     let active = true;
-    if (!catalog) setLoading(true);
-    fetchWithSWR('practice:catalog', () => api('/practice/catalog'), { maxAgeMs: 10 * 60 * 1000 })
+    const forceRefresh = reloadSeq > 0;
+    if (!catalog || forceRefresh) setLoading(true);
+    setError('');
+    fetchWithSWR('practice:catalog', () => api('/practice/catalog'), {
+      maxAgeMs: 10 * 60 * 1000,
+      forceRefresh
+    })
       .then(data => {
         if (!active) return;
-        setCatalog(data);
+        if (isValidPracticeCatalog(data)) {
+          setCatalog(data);
+          setError('');
+        } else {
+          setError('Practice catalog returned an unexpected format. Tap Retry.');
+        }
         setLoading(false);
       })
       .catch(err => {
         if (!active) return;
-        if (!catalog) setError(err.message || 'Failed to load practice catalog.');
+        if (!catalog) setError(err?.message || 'Failed to load practice catalog.');
         setLoading(false);
       });
 
     return () => { active = false; };
-  }, []);
+  }, [reloadSeq]);
 
   const practiceStats = progress?.practice || { listening: [], speaking: [], pronunciation: [], conversation: [] };
   const totalCompletedPractice =
@@ -51,8 +73,16 @@ export function PracticeHub({ progress, updateProgress, api }) {
   if (error || !catalog) {
     return (
       <div className="practice-page">
-        <div className="form-error" role="alert">
-          {error || 'Unable to load practice catalog.'}
+        <div className="form-error" role="alert" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+          <span>{error || 'Unable to load practice catalog.'}</span>
+          <button
+            type="button"
+            className="button dark"
+            style={{ padding: '8px 14px', fontSize: '13px' }}
+            onClick={() => setReloadSeq(s => s + 1)}
+          >
+            Retry
+          </button>
         </div>
       </div>
     );

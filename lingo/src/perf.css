@@ -9,6 +9,31 @@ body {
   overscroll-behavior-y: contain;
 }
 
+/* Native Android WebView Scroll Fix: prevent overflow-x:hidden from trapping vertical touch scroll */
+html[data-platform='native'],
+html[data-platform='native'] body {
+  overflow-x: clip !important;
+  overflow-y: auto !important;
+  height: auto !important;
+  min-height: 100dvh;
+  touch-action: pan-y;
+}
+
+html[data-platform='native'] #root,
+html[data-platform='native'] .app-shell,
+html[data-platform='native'] .workspace,
+html[data-platform='native'] main {
+  overflow-x: clip !important;
+  overflow-y: visible !important;
+  height: auto !important;
+}
+
+.mobile-nav-btn.locked,
+.mobile-nav-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
 button,
 a,
 [role='button'],

@@ -10,6 +10,7 @@ data.json*
 scratch/*data*.json
 uploads/*.png
 *.apk
+!releases/lingo.apk
 tests/*.png
 test-results/
 android/.gradle/
