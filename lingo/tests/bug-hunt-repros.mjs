@@ -74,7 +74,9 @@ try {
   await page.locator('.auth-submit-btn').click();
   await page.locator('.web-sidebar-profile').waitFor({ state: 'visible' });
   const u2SidebarName = await page.locator('.web-sidebar-profile').textContent();
-  console.log(`[CONFIRMED BUG] CUSTOM_NAME_LEAK_ON_SIGNOUT: User Two displays "${u2SidebarName.trim()}"`);
+  assert.ok(u2SidebarName.includes('User Two') && !u2SidebarName.includes('LeakedNameFromU1'),
+    `User Two leaked User One custom name: "${u2SidebarName}"`);
+  console.log(`[FIXED     ] CUSTOM_NAME_LEAK_ON_SIGNOUT: User Two displays "${u2SidebarName.trim()}"`);
 
   // Repro 3: Verify ErrorBoundary catches runtime render crashes instead of leaving empty #root
   const { createServer } = await import('vite');

@@ -97,4 +97,18 @@ export function clearUserScopedCaches() {
       memCache.delete(key);
     }
   }
+  try {
+    if (typeof localStorage !== 'undefined') {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && (
+          k.startsWith(STORAGE_PREFIX + 'me:') ||
+          k.startsWith(STORAGE_PREFIX + 'social:') ||
+          k.startsWith(STORAGE_PREFIX + 'rewards:')
+        )) {
+          localStorage.removeItem(k);
+        }
+      }
+    }
+  } catch { }
 }
