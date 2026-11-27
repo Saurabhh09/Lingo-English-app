@@ -57,11 +57,45 @@ if (fs.existsSync(path.join(root, '.env'))) {
 }
 const app = express();
 app.set('trust proxy', 1);
+const ALLOWED_CORS_ORIGINS = new Set([
+  'https://lingo-ruby-three.vercel.app',
+  'https://localhost',
+  'capacitor://localhost',
+  'ionic://localhost',
+  ...String(process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean)
+]);
+function isAllowedCorsOrigin(origin) {
+  if (!origin || typeof origin !== 'string') return false;
+  if (ALLOWED_CORS_ORIGINS.has(origin)) return true;
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return true;
+  return false;
+}
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  if (req.method === 'OPTIONS') {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), geolocation=(), microphone=(self), payment=(), usb=()');
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://lingo-ruby-three.vercel.app; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+  );
+  if (req.secure || req.headers['x-forwarded-proto'] === 'https' || process.env.VERCEL) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Vary', 'Origin');
+    if (isAllowedCorsOrigin(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+      if (req.method === 'OPTIONS') {
+        return res.sendStatus(204);
+      }
+    } else if (req.method === 'OPTIONS') {
+      return res.sendStatus(403);
+    }
+  } else if (req.method === 'OPTIONS') {
     return res.sendStatus(204);
   }
   next();
@@ -3053,8 +3087,15 @@ if (shouldListen) {
   });
   app.get('/downloads/:filename', (req, res, next) => sendApkRelease(req.params.filename, res, next));
   app.get('/lingo.apk', (_, res, next) => sendApkRelease(null, res, next));
+  app.use((req, res, next) => {
+    const segments = req.path.split('/').filter(Boolean);
+    if (segments.some(seg => seg.startsWith('.'))) {
+      return res.status(404).end();
+    }
+    next();
+  });
   if (process.env.NODE_ENV === 'production' || process.env.ISOLATED_TEST) {
-    app.use(express.static(path.join(root, 'dist')));
+    app.use(express.static(path.join(root, 'dist'), { dotfiles: 'deny' }));
     app.get('/{*path}', (_, res) => res.sendFile(path.join(root, 'dist/index.html')));
   } else {
     const { createServer: createViteServer } = await import('vite');
