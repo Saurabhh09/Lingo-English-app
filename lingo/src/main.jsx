@@ -59,8 +59,10 @@ import {
   notifyRewardUnlockedOnDevice
 } from './services/deviceNotifications.js';
 import { speakEnglishText, copyTextReliably } from './services/speechAudio.js';
-import { fetchWithSWR, getSyncCache } from './services/dataCache.js';
+import { fetchWithSWR, getSyncCache, clearUserScopedCaches } from './services/dataCache.js';
 import defaultApkManifest from '../releases/apk-manifest.json';
+
+const customNameStorageKey = username => `lingo-custom-name:${username || 'guest'}`;
 
 const pages = ['home', 'learn', 'friends', 'practice', 'games', 'profile', 'reminders'];
 const navPages = ['home', 'learn', 'friends', 'practice', 'games', 'profile'];
@@ -259,24 +261,40 @@ function App() {
   }
 
   const adopt = d => {
+    clearUserScopedCaches();
     token.current = d.token;
-    localStorage.setItem('lingo-token', d.token);
-    const customName = localStorage.getItem('lingo-custom-name');
+    try { localStorage.setItem('lingo-token', d.token); } catch { }
+    try { localStorage.removeItem('lingo-custom-name'); } catch { }
+    const customName = d.user?.username ? localStorage.getItem(customNameStorageKey(d.user.username)) : null;
     if (customName && d.user) {
       d.user.name = customName;
     }
     setUser(d.user);
+    if (d.user?.avatar) setSelectedAvatar(d.user.avatar);
+    if (d.user?.avatarColor) setAvatarColor(d.user.avatarColor);
     const mergedProg = mergeCheckpoints(d.progress, d.user?.username);
     seenBadgeIdsRef.current = new Set(Object.keys(mergedProg?.badges || {}));
     setProgress(mergedProg);
+    setSocialOverview(null);
+    setSocialPresence(null);
+    setBadgeQueue([]);
+    setSelectedBadgeDetail(null);
+    setRewardQueue([]);
+    setPendingChallengeTarget(null);
+    setDismissedInviteId('');
+    setNotifOpen(false);
+    setIsEditingName(false);
+    setTempName('');
     setGame(null);
     setActiveLessonPage(null);
     setAuthModal(null);
     if (Array.isArray(d.newlyUnlockedBadges) && d.newlyUnlockedBadges.length) {
       enqueueUnlockedBadges(d.newlyUnlockedBadges);
     }
-    localStorage.removeItem('lingo-game');
-    localStorage.removeItem('lingo-solo');
+    try {
+      localStorage.removeItem('lingo-game');
+      localStorage.removeItem('lingo-solo');
+    } catch { }
     refreshSocial().catch(() => { });
   };
 
@@ -394,11 +412,14 @@ function App() {
         }
       }
       if (d) {
-        const customName = localStorage.getItem('lingo-custom-name');
+        try { localStorage.removeItem('lingo-custom-name'); } catch { }
+        const customName = d.user?.username ? localStorage.getItem(customNameStorageKey(d.user.username)) : null;
         if (customName && d.user) {
           d.user.name = customName;
         }
         setUser(d.user);
+        if (d.user?.avatar) setSelectedAvatar(d.user.avatar);
+        if (d.user?.avatarColor) setAvatarColor(d.user.avatarColor);
         const mergedProg = mergeCheckpoints(d.progress, d.user?.username);
         const existingBadgeIds = new Set(Object.keys(mergedProg?.badges || {}));
         const backfilled = Array.isArray(d.newlyUnlockedBadges) ? d.newlyUnlockedBadges : [];
@@ -464,18 +485,45 @@ function App() {
     }
   }
 
+  function resetClientSessionState({ clearName = false } = {}) {
+    const prevUsername = user?.username;
+    token.current = null;
+    clearUserScopedCaches();
+    try {
+      localStorage.removeItem('lingo-token');
+      localStorage.removeItem('lingo-game');
+      localStorage.removeItem('lingo-solo');
+      localStorage.removeItem('lingo-custom-name');
+      if (clearName && prevUsername) {
+        localStorage.removeItem(customNameStorageKey(prevUsername));
+      }
+    } catch { }
+    seenBadgeIdsRef.current = new Set();
+    setModal(null);
+    setAuthModal(null);
+    setUser(null);
+    setProgress(null);
+    setGame(null);
+    setActiveLessonPage(null);
+    setSocialOverview(null);
+    setSocialPresence(null);
+    setBadgeQueue([]);
+    setSelectedBadgeDetail(null);
+    setRewardQueue([]);
+    setPendingChallengeTarget(null);
+    setDismissedInviteId('');
+    setNotifOpen(false);
+    setIsEditingName(false);
+    setTempName('');
+    setSelectedAvatar('🌱');
+    setAvatarColor('lime');
+  }
+
   async function handleExitDemo() {
     try {
       await api('/auth/logout', {});
     } catch { }
-    token.current = null;
-    localStorage.removeItem('lingo-token');
-    localStorage.removeItem('lingo-game');
-    localStorage.removeItem('lingo-solo');
-    setUser(null);
-    setProgress(null);
-    setGame(null);
-    setModal(null);
+    resetClientSessionState({ clearName: true });
     notify('Exited demo mode.');
   }
 
@@ -1616,7 +1664,9 @@ function App() {
                               if (tempName.trim()) {
                                 const trimmed = tempName.trim();
                                 setUser(prev => ({ ...prev, name: trimmed }));
-                                localStorage.setItem('lingo-custom-name', trimmed);
+                                try {
+                                  localStorage.setItem(customNameStorageKey(user?.username), trimmed);
+                                } catch { }
                                 api('/social/profile', { name: trimmed }).catch(() => { });
                                 setIsEditingName(false);
                                 notify('Display name updated!');
@@ -1842,14 +1892,7 @@ function App() {
                   className="button dark full-width sign-out-action-btn"
                   onClick={async () => {
                     try { await api('/auth/logout', {}); } catch (e) { console.warn('Logout:', e); }
-                    token.current = null;
-                    localStorage.removeItem('lingo-token');
-                    localStorage.removeItem('lingo-game');
-                    localStorage.removeItem('lingo-solo');
-                    setModal(null);
-                    setUser(null);
-                    setProgress(null);
-                    setGame(null);
+                    resetClientSessionState();
                     navigate('home');
                     notify('Signed out. See you again soon!');
                   }}
@@ -1863,14 +1906,7 @@ function App() {
                     style={{ flex: 1 }}
                     onClick={async () => {
                       try { await api('/auth/logout-all', {}); } catch (e) { console.warn('Logout all:', e); }
-                      token.current = null;
-                      localStorage.removeItem('lingo-token');
-                      localStorage.removeItem('lingo-game');
-                      localStorage.removeItem('lingo-solo');
-                      setModal(null);
-                      setUser(null);
-                      setProgress(null);
-                      setGame(null);
+                      resetClientSessionState();
                       navigate('home');
                       notify('Signed out of all devices.');
                     }}
@@ -2117,14 +2153,7 @@ function App() {
                       setModal(m => ({ ...m, busy: true, error: '' }));
                       try {
                         await api('/me', { confirmUsername: modal.confirmInput }, 'DELETE');
-                        token.current = null;
-                        localStorage.removeItem('lingo-token');
-                        localStorage.removeItem('lingo-game');
-                        localStorage.removeItem('lingo-solo');
-                        setModal(null);
-                        setUser(null);
-                        setProgress(null);
-                        setGame(null);
+                        resetClientSessionState({ clearName: true });
                         navigate('home');
                         notify('Your account has been permanently deleted.');
                       } catch (e) {
