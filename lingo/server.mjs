@@ -526,24 +526,43 @@ app.get('/api/badges', (_, res) => { res.set('Cache-Control', 'public, max-age=3
 app.get('/api/rewards/catalog', (_, res) => { res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=600'); res.json(CACHED_REWARDS_CATALOG); });
 app.get('/api/ai/status', (_, res) => res.json(getAIStatus()));
 const initialProgress = (demo = false, tz = 'UTC') => ({ xp: demo ? 1240 : 0, gems: 0, words: demo ? 450 : 0, streak: demo ? 7 : 0, completed: [], checkpoints: [], saved: [], rewards: {}, walletLedger: [], certificates: {}, goal: 10, todayWords: 0, lastStudy: null, history: {}, dailyDate: today(normalizeTimeZone(tz)), practice: { listening: [], speaking: [], pronunciation: [], conversation: [] } });
-const publicUser = u => ({ username: u.username, lingoId: u.lingoId || deriveLingoId(u.username), name: u.name, avatar: u.avatar || '🌱', avatarColor: u.avatarColor || 'lime', demo: u.demo });
+const publicUser = u => ({ username: u.username, lingoId: u.lingoId || deriveLingoId(u.username), name: u.name, avatar: u.avatar || '🌱', avatarColor: u.avatarColor || 'lime', demo: u.demo, mustChangePassword: Boolean(u.mustChangePassword) });
 const DUMMY_SCRYPT_SALT = 'lingo-constant-time-dummy-salt-v1';
 const DUMMY_SCRYPT_HASH = scryptSync('lingo-dummy-invalid-password', DUMMY_SCRYPT_SALT, 64);
+const SCRYPT_N17_OPTS = { N: 131072, r: 8, p: 1, maxmem: 256 * 1024 * 1024 };
+function hashPasswordScrypt(password, salt, algo = 'scrypt-n17') {
+  if (algo === 'scrypt-n17') {
+    return scryptSync(password, salt, 64, SCRYPT_N17_OPTS).toString('hex');
+  }
+  return scryptSync(password, salt, 64).toString('hex');
+}
+function verifyPasswordScrypt(u, pwd) {
+  if (!u || typeof pwd !== 'string' || !u.salt || !u.password) return false;
+  const expectedBuf = Buffer.from(u.password, 'hex');
+  const candidateBuf = u.passwordAlgo === 'scrypt-n17'
+    ? scryptSync(pwd, u.salt, 64, SCRYPT_N17_OPTS)
+    : scryptSync(pwd, u.salt, 64);
+  return expectedBuf.length === candidateBuf.length && timingSafeEqual(expectedBuf, candidateBuf);
+}
 async function session(u) { const token = id() + id(); await db.set('sessions', hash(token), { username: u.username, tokenVersion: u.tokenVersion || 0, expires: Date.now() + 30 * 86400000 }); return token; }
-app.post('/api/auth/signup', route(async (req, res) => { const body = req.body || {}; const { name, password } = body; const username = String(body.username || '').toLowerCase().trim(); if (!/^[a-z0-9_]{3,20}$/.test(username)) fail('Use 3–20 letters, numbers, or underscores for your username.'); if (typeof name !== 'string' || !name.trim() || name.length > 40) fail('Please enter a name (up to 40 characters).'); if (typeof password !== 'string' || password.length < 8 || password.length > 128) fail('Choose a password with 8–128 characters.'); await locked('signup:' + username, async () => { if (await db.get('accounts', username)) fail('That username is taken. Try another one.', 409); const salt = id(); const u = { username, lingoId: deriveLingoId(username), avatar: '🌱', avatarColor: 'lime', name: name.trim(), salt, password: scryptSync(password, salt, 64).toString('hex'), tokenVersion: 0, demo: false }; const prog = initialProgress(false, req.headers['x-timezone']); await db.set('accounts', username, u); await db.set('progress', username, prog); res.json({ token: await session(u), user: publicUser(u), progress: prog }); }); }));
+app.post('/api/auth/signup', route(async (req, res) => { const body = req.body || {}; const { name, password } = body; const username = String(body.username || '').toLowerCase().trim(); if (!/^[a-z0-9_]{3,20}$/.test(username)) fail('Use 3–20 letters, numbers, or underscores for your username.'); if (typeof name !== 'string' || !name.trim() || name.length > 40) fail('Please enter a name (up to 40 characters).'); if (typeof password !== 'string' || password.length < 8 || password.length > 128) fail('Choose a password with 8–128 characters.'); await locked('signup:' + username, async () => { if (await db.get('accounts', username)) fail('That username is taken. Try another one.', 409); const salt = id(); const u = { username, lingoId: deriveLingoId(username), avatar: '🌱', avatarColor: 'lime', name: name.trim(), salt, password: hashPasswordScrypt(password, salt, 'scrypt-n17'), passwordAlgo: 'scrypt-n17', tokenVersion: 0, demo: false }; const prog = initialProgress(false, req.headers['x-timezone']); await db.set('accounts', username, u); await db.set('progress', username, prog); res.json({ token: await session(u), user: publicUser(u), progress: prog }); }); }));
 app.post('/api/auth/login', route(async (req, res) => {
   const body = req.body || {};
   const username = String(body.username || '').toLowerCase().trim();
   const pwd = typeof body.password === 'string' && body.password.length <= 128 ? body.password : null;
+  const clientIp = req.ip || 'unknown';
+  const ipAllowed = await consumeRateLimit('login_ip', clientIp, 15, 15 * 60000);
+  const userAllowed = username ? await consumeRateLimit('login_user', username, 8, 15 * 60000) : true;
+  if (!ipAllowed || !userAllowed) {
+    fail('Too many sign-in attempts. Please wait a few minutes and try again.', 429);
+  }
   const u = username ? await db.get('accounts', username) : null;
   if (!u || !pwd || !u.salt || !u.password) {
     const candidate = scryptSync(pwd || 'invalid-password-probe', DUMMY_SCRYPT_SALT, 64);
     timingSafeEqual(DUMMY_SCRYPT_HASH, candidate);
     fail('Username or password doesn’t match.', 401);
   }
-  const expectedBuf = Buffer.from(u.password, 'hex');
-  const candidateBuf = scryptSync(pwd, u.salt, 64);
-  if (expectedBuf.length !== candidateBuf.length || !timingSafeEqual(expectedBuf, candidateBuf)) {
+  if (!verifyPasswordScrypt(u, pwd)) {
     fail('Username or password doesn’t match.', 401);
   }
   if (!u.lingoId || !u.avatar || !u.avatarColor) {
@@ -552,7 +571,9 @@ app.post('/api/auth/login', route(async (req, res) => {
     u.avatarColor = u.avatarColor || 'lime';
     await db.set('accounts', username, u);
   }
-  res.json({ token: await session(u), user: publicUser(u), progress: await db.get('progress', username) });
+  const token = await session(u);
+  const progress = await db.get('progress', username);
+  res.json({ token, user: publicUser(u), progress, mustChangePassword: Boolean(u.mustChangePassword) });
 }));
 app.post('/api/auth/demo', route(async (req, res) => {
   if (connected) {
@@ -565,7 +586,55 @@ app.post('/api/auth/demo', route(async (req, res) => {
   await db.set('progress', username, progress);
   res.json({ token: await session(u), user: publicUser(u), progress });
 }));
-app.use('/api', async (req, res, next) => { try { const token = (req.headers.authorization || '').replace(/^Bearer /, ''); const s = token && await db.get('sessions', hash(token)); if (!s || s.expires < Date.now()) fail('Please sign in to continue.', 401); req.user = await db.get('accounts', s.username); if (!req.user || (s.tokenVersion ?? 0) !== (req.user.tokenVersion ?? 0)) fail('Please sign in again.', 401); req.sessionKey = hash(token); next(); } catch (e) { next(e); } });
+const PASSWORD_CHANGE_ALLOWLIST = new Set(['/auth/change-password', '/auth/logout', '/me']);
+app.use('/api', async (req, res, next) => {
+  try {
+    const token = (req.headers.authorization || '').replace(/^Bearer /, '');
+    const s = token && await db.get('sessions', hash(token));
+    if (!s || s.expires < Date.now()) fail('Please sign in to continue.', 401);
+    req.user = await db.get('accounts', s.username);
+    if (!req.user || (s.tokenVersion ?? 0) !== (req.user.tokenVersion ?? 0)) fail('Please sign in again.', 401);
+    req.sessionKey = hash(token);
+    if (req.user.mustChangePassword && !PASSWORD_CHANGE_ALLOWLIST.has(req.path)) {
+      return res.status(403).json({
+        error: 'Please set a new password to keep your account safe.',
+        mustChangePassword: true
+      });
+    }
+    next();
+  } catch (e) { next(e); }
+});
+app.post('/api/auth/change-password', route(async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (typeof currentPassword !== 'string' || !currentPassword || currentPassword.length > 128) {
+    fail('Please enter your current password.', 400);
+  }
+  if (typeof newPassword !== 'string' || newPassword.length < 10 || newPassword.length > 128) {
+    fail('Choose a new password with 10–128 characters.', 400);
+  }
+  if (newPassword === currentPassword) {
+    fail('Your new password must be different from your current password.', 400);
+  }
+  await locked('pwd:' + req.user.username, async () => {
+    const freshUser = await db.get('accounts', req.user.username);
+    if (!freshUser || !verifyPasswordScrypt(freshUser, currentPassword)) {
+      fail('Current password does not match.', 401);
+    }
+    const newSalt = id();
+    freshUser.salt = newSalt;
+    freshUser.password = hashPasswordScrypt(newPassword, newSalt, 'scrypt-n17');
+    freshUser.passwordAlgo = 'scrypt-n17';
+    freshUser.mustChangePassword = false;
+    freshUser.tokenVersion = (freshUser.tokenVersion ?? 0) + 1;
+    await db.set('accounts', freshUser.username, freshUser);
+    if (req.sessionKey) {
+      await db.del('sessions', req.sessionKey).catch(() => {});
+    }
+    const nextToken = await session(freshUser);
+    const progress = await db.get('progress', freshUser.username);
+    res.json({ token: nextToken, user: publicUser(freshUser), progress });
+  });
+}));
 app.get('/api/me', route(async (req, res) => {
   if (!req.user.lingoId || !req.user.avatar || !req.user.avatarColor) {
     req.user.lingoId = req.user.lingoId || deriveLingoId(req.user.username);
@@ -1092,9 +1161,9 @@ app.post('/api/ai/conversation', route(async (req, res) => {
 
   const sanitizedHistory = Array.isArray(history)
     ? history
-        .slice(-12)
-        .filter(t => t && ['user', 'assistant'].includes(t.role) && typeof t.content === 'string' && t.content.trim())
-        .map(t => ({ role: t.role, content: t.content.trim().slice(0, 600) }))
+      .slice(-12)
+      .filter(t => t && ['user', 'assistant'].includes(t.role) && typeof t.content === 'string' && t.content.trim())
+      .map(t => ({ role: t.role, content: t.content.trim().slice(0, 600) }))
     : [];
 
   let turnResult;
@@ -2650,11 +2719,11 @@ app.get('/api/communities/:id', route(async (req, res) => {
 
     const pendingInvites = ['owner', 'admin'].includes(myMem.role)
       ? s.communityInvitations
-          .filter(i => i.communityId === commId && i.status === 'pending')
-          .map(i => ({
-            ...i,
-            inviteeName: accountsMap[i.inviteeId]?.name || i.inviteeId
-          }))
+        .filter(i => i.communityId === commId && i.status === 'pending')
+        .map(i => ({
+          ...i,
+          inviteeName: accountsMap[i.inviteeId]?.name || i.inviteeId
+        }))
       : [];
 
     res.json({

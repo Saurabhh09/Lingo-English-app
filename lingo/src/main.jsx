@@ -61,6 +61,7 @@ import {
 import { speakEnglishText, copyTextReliably } from './services/speechAudio.js';
 import { fetchWithSWR, getSyncCache, clearUserScopedCaches } from './services/dataCache.js';
 import defaultApkManifest from '../releases/apk-manifest.json';
+import { ForcePasswordChangeScreen } from './components/Auth/ForcePasswordChangeScreen.jsx';
 
 const customNameStorageKey = username => `lingo-custom-name:${username || 'guest'}`;
 function safeGetStorage(key, fallback = null) {
@@ -313,7 +314,9 @@ function App() {
       localStorage.removeItem('lingo-game');
       localStorage.removeItem('lingo-solo');
     } catch { }
-    refreshSocial(d.user?.username).catch(() => { });
+    if (!d.user?.mustChangePassword) {
+      refreshSocial(d.user?.username).catch(() => { });
+    }
   };
 
   async function refreshSocial(explicitUsername = null) {
@@ -446,12 +449,14 @@ function App() {
         seenBadgeIdsRef.current = existingBadgeIds;
         setProgress(mergedProg);
         if (backfilled.length) enqueueUnlockedBadges(backfilled);
-        api('/badges')
-          .then(res => {
-            if (Array.isArray(res?.badges) && res.badges.length) setBadgeCatalog(res.badges);
-          })
-          .catch(() => { });
-        refreshSocial(d.user?.username).catch(() => { });
+        if (!d.user?.mustChangePassword) {
+          api('/badges')
+            .then(res => {
+              if (Array.isArray(res?.badges) && res.badges.length) setBadgeCatalog(res.badges);
+            })
+            .catch(() => { });
+          refreshSocial(d.user?.username).catch(() => { });
+        }
         try {
           const params = new URLSearchParams(window.location.search);
           if (params.get('invite')) {
@@ -1277,6 +1282,20 @@ function App() {
           </div>
         </div>
       </div>
+    );
+  }
+
+  if (user?.mustChangePassword) {
+    return (
+      <ForcePasswordChangeScreen
+        user={user}
+        api={api}
+        onSuccess={d => {
+          adopt(d);
+          notify('Password updated! Your account is now secured.');
+        }}
+        onSignOut={handleExitDemo}
+      />
     );
   }
 
