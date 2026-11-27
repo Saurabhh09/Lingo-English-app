@@ -50,7 +50,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.10",
-    "@playwright/test": "^1.64.0",
+    "@playwright/test": "^1.65.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "rollup-plugin-visualizer": "^7.3.0",
