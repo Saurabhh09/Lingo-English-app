@@ -161,9 +161,20 @@ try {
     `xp=${massSignup.data?.progress?.xp}, demo=${massSignup.data?.user?.demo}`);
 
   // 6. CORS & Security Headers check
-  const health = await req('/health');
-  log('CORS_AND_HEADERS', health.headers.get('access-control-allow-origin') === '*' || !health.headers.get('x-content-type-options'),
-    `ACAO=${health.headers.get('access-control-allow-origin')}, XCTO=${health.headers.get('x-content-type-options')}, XFO=${health.headers.get('x-frame-options')}, CSP=${health.headers.get('content-security-policy')}`);
+  const health = await fetch(`${base}/health`, { headers: { Origin: 'https://evil.example' } });
+  const preflightEvil = await fetch(`${base}/health`, {
+    method: 'OPTIONS',
+    headers: { Origin: 'https://evil.example' }
+  });
+  const healthAllowed = await fetch(`${base}/health`, { headers: { Origin: 'https://lingo-ruby-three.vercel.app' } });
+  assert.equal(health.headers.get('access-control-allow-origin'), null, 'Untrusted origin must not receive ACAO');
+  assert.equal(preflightEvil.status, 403, 'Untrusted OPTIONS preflight must return 403');
+  assert.equal(healthAllowed.headers.get('access-control-allow-origin'), 'https://lingo-ruby-three.vercel.app');
+  assert.equal(health.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(health.headers.get('x-frame-options'), 'DENY');
+  assert.ok(health.headers.get('content-security-policy')?.includes("default-src 'self'"));
+  log('CORS_AND_HEADERS', false,
+    `evilACAO=${health.headers.get('access-control-allow-origin')}, evilPreflight=${preflightEvil.status}, allowedACAO=${healthAllowed.headers.get('access-control-allow-origin')}, XCTO=${health.headers.get('x-content-type-options')}, XFO=${health.headers.get('x-frame-options')}`);
 
   // 7. Authorization Matrix (A vs B) - stranger profile minimization & search rate limit
   const readBtoA = await req(`/social/users/${uA}`, { token: tokB });
@@ -278,7 +289,8 @@ try {
 
   // 12. Dotfile / static probe
   const envProbe = await fetch(`${srv.baseUrl}/.env`).then(r => ({ status: r.status })).catch(() => ({ status: 0 }));
-  log('STATIC_ENV_PROBE', envProbe.status === 200, `GET /.env status=${envProbe.status}`);
+  assert.equal(envProbe.status, 404, 'Dotfiles such as /.env must return 404');
+  log('STATIC_ENV_PROBE', false, `GET /.env status=${envProbe.status}`);
 
 } finally {
   await srv.stop();
