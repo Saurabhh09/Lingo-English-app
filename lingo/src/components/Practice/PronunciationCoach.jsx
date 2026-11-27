@@ -10,7 +10,7 @@ export function PronunciationCoach({ items = [], api, updateProgress, userComple
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const currentItem = items.find(i => i.id === selectedId) || items[0];
+  const currentItem = items.find(i => i.id === selectedId) || items[0] || null;
 
   function handleItemChange(id) {
     setSelectedId(id);
@@ -20,6 +20,7 @@ export function PronunciationCoach({ items = [], api, updateProgress, userComple
   }
 
   function playReferenceAudio() {
+    if (!currentItem) return;
     speakEnglishText(currentItem.targetPhrase, {
       audioUrl: currentItem.referenceAudioUrl || null,
       rate: 0.8
@@ -51,6 +52,14 @@ export function PronunciationCoach({ items = [], api, updateProgress, userComple
     setTranscript('');
     setResult(null);
     setError('');
+  }
+
+  if (!currentItem) {
+    return (
+      <div className="practice-empty-state" role="status" style={{ padding: '24px', textAlign: 'center' }}>
+        <p>Pronunciation exercises are loading or unavailable right now.</p>
+      </div>
+    );
   }
 
   return (

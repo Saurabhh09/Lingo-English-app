@@ -119,8 +119,19 @@ try {
   const fallbackTitle = await ebPage.locator('#root h1').textContent();
   assert.equal(fallbackTitle?.trim(), 'Something went wrong', 'ErrorBoundary must render recovery UI on crash');
   await ebPage.close();
-  await vite.close();
   console.log('[FIXED     ] ERROR_BOUNDARY: Catch-all fallback renders cleanly');
+
+  // Repro 4: Verify PronunciationCoach & AIConversationTutor tolerate empty catalog props
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const ReactMod = await import('react');
+  const { PronunciationCoach } = await vite.ssrLoadModule('/src/components/Practice/PronunciationCoach.jsx');
+  const { AIConversationTutor } = await vite.ssrLoadModule('/src/components/Practice/AIConversationTutor.jsx');
+  const pronHtml = renderToStaticMarkup(ReactMod.createElement(PronunciationCoach, { items: [], api: async () => ({}), updateProgress: () => {} }));
+  const convoHtml = renderToStaticMarkup(ReactMod.createElement(AIConversationTutor, { scenarios: [], api: async () => ({}), updateProgress: () => {} }));
+  assert.ok(pronHtml.includes('unavailable'), 'PronunciationCoach empty fallback must render');
+  assert.ok(convoHtml.includes('unavailable'), 'AIConversationTutor empty fallback must render');
+  await vite.close();
+  console.log('[FIXED     ] EMPTY_PRACTICE_CATALOG_GUARD: Empty props render fallback cleanly');
 } finally {
   await browser?.close();
   await srv.stop();

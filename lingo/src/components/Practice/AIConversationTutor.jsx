@@ -14,7 +14,7 @@ export function AIConversationTutor({ scenarios = [], api, updateProgress, userC
   const scrollRef = useRef(null);
   const recognitionRef = useRef(null);
 
-  const currentScenario = scenarios.find(s => s.id === selectedId) || scenarios[0];
+  const currentScenario = scenarios.find(s => s.id === selectedId) || scenarios[0] || null;
   const [selectedLevel, setSelectedLevel] = useState(currentScenario?.level || 'B1');
 
   useEffect(() => {
@@ -30,6 +30,12 @@ export function AIConversationTutor({ scenarios = [], api, updateProgress, userC
   }, []);
 
   useEffect(() => {
+    if (!currentScenario) {
+      setMessages([]);
+      setInput('');
+      setError('');
+      return;
+    }
     // Reset conversation on scenario change with starter prompt
     setMessages([
       {
@@ -42,7 +48,7 @@ export function AIConversationTutor({ scenarios = [], api, updateProgress, userC
     ]);
     setInput('');
     setError('');
-  }, [currentScenario.id]);
+  }, [currentScenario?.id]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -186,6 +192,14 @@ export function AIConversationTutor({ scenarios = [], api, updateProgress, userC
     ]);
     setInput('');
     setError('');
+  }
+
+  if (!currentScenario) {
+    return (
+      <div className="practice-empty-state" role="status" style={{ padding: '24px', textAlign: 'center' }}>
+        <p>Conversation scenarios are loading or unavailable right now.</p>
+      </div>
+    );
   }
 
   return (
