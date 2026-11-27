@@ -157,98 +157,20 @@ function App() {
     });
   };
 
-  const badgeStorageKey = username => `lingo-badges:${username || 'guest'}`;
-  const loadStoredBadges = username => {
-    try {
-      const raw = localStorage.getItem(badgeStorageKey(username));
-      const parsed = raw ? JSON.parse(raw) : {};
-      return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
-    } catch {
-      return {};
-    }
-  };
-  const saveStoredBadges = (username, badges) => {
-    try {
-      localStorage.setItem(badgeStorageKey(username), JSON.stringify(badges || {}));
-    } catch { }
-  };
-
-  const rewardsStorageKey = username => `lingo-rewards:${username || 'guest'}`;
-  const loadStoredRewards = username => {
-    try {
-      const raw = localStorage.getItem(rewardsStorageKey(username));
-      const parsed = raw ? JSON.parse(raw) : {};
-      return (parsed && typeof parsed === 'object') ? parsed : {};
-    } catch {
-      return {};
-    }
-  };
-  const saveStoredRewards = (username, p) => {
-    try {
-      localStorage.setItem(rewardsStorageKey(username), JSON.stringify({
-        rewards: p?.rewards || {},
-        walletLedger: p?.walletLedger || [],
-        certificates: p?.certificates || {}
-      }));
-    } catch { }
-  };
-
   const checkpointStorageKey = username => `lingo-checkpoints:${username || 'guest'}`;
-  const loadStoredCheckpoints = username => {
-    try {
-      const raw = localStorage.getItem(checkpointStorageKey(username));
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  };
-  const mergeCheckpoints = (p, username) => {
+
+  const mergeCheckpoints = (p) => {
     if (!p) return p;
-    const local = loadStoredCheckpoints(username);
-    const mergedCheckpoints = Array.from(new Set([...(p.checkpoints || []), ...local]));
-    const storedBadges = loadStoredBadges(username);
-    const storedRw = loadStoredRewards(username);
-
-    const mergedLedger = Array.isArray(p.walletLedger) ? [...p.walletLedger] : [];
-    const serverTxIds = new Set(mergedLedger.map(tx => tx.id));
-    let extraXp = 0;
-    let extraGems = 0;
-    for (const localTx of (storedRw.walletLedger || [])) {
-      if (localTx?.id && !serverTxIds.has(localTx.id)) {
-        serverTxIds.add(localTx.id);
-        mergedLedger.push(localTx);
-        if (localTx.currency === 'xp') extraXp += Number(localTx.amount || 0);
-        if (localTx.currency === 'gems') extraGems += Number(localTx.amount || 0);
-      }
-    }
-
-    const mergedRewards = { ...(storedRw.rewards || {}) };
-    for (const [rwId, srvRec] of Object.entries(p.rewards || {})) {
-      const prev = mergedRewards[rwId];
-      if (!prev || prev.status !== 'claimed' || srvRec.status === 'claimed') {
-        mergedRewards[rwId] = srvRec;
-      }
-    }
-
-    const nextP = {
+    return {
       ...p,
-      xp: (p.xp || 0) + extraXp,
-      gems: (p.gems || 0) + extraGems,
-      checkpoints: mergedCheckpoints,
-      badges: { ...storedBadges, ...(p.badges || {}) },
-      rewards: mergedRewards,
-      walletLedger: mergedLedger,
-      certificates: { ...(storedRw.certificates || {}), ...(p.certificates || {}) }
+      xp: Number(p.xp || 0),
+      gems: Number(p.gems || 0),
+      checkpoints: Array.isArray(p.checkpoints) ? p.checkpoints : [],
+      badges: p.badges || {},
+      rewards: p.rewards || {},
+      walletLedger: Array.isArray(p.walletLedger) ? p.walletLedger : [],
+      certificates: p.certificates || {}
     };
-    // Backfill & evaluate client-side as fallback if remote backend hasn't synced achievement/reward tables yet
-    try {
-      evaluateAchievements(nextP, { type: 'backfill' });
-      evaluateRewards(nextP);
-      saveStoredBadges(username, nextP.badges);
-      saveStoredRewards(username, nextP);
-    } catch { }
-    return nextP;
   };
   const applyProgress = (p, username = user?.username, { detectNewBadges = true } = {}) => {
     const merged = mergeCheckpoints(p, username);
@@ -277,7 +199,6 @@ function App() {
             if (b?.id) seenBadgeIdsRef.current.add(b.id);
           }
         }
-        saveStoredRewards(uname, res.progress);
         applyProgress(res.progress, uname, { detectNewBadges: false });
         const rwDef = res.reward || REWARD_BY_ID.get(rewardId);
         const primaryBadge = rwDef?.badgeId
@@ -292,12 +213,10 @@ function App() {
         }
       }
     } catch (err) {
-      if (err?.status === 404 || /not found|404/i.test(err?.message || '')) {
+      if (user?.demo && (err?.status === 404 || /not found|404/i.test(err?.message || ''))) {
         try {
           const clone = structuredClone(progress || {});
           const res = claimRewardLocal(clone, rewardId);
-          saveStoredBadges(uname, clone.badges);
-          saveStoredRewards(uname, clone);
           for (const b of (res.newlyUnlockedBadges || [])) {
             if (b?.id) seenBadgeIdsRef.current.add(b.id);
           }
