@@ -119,7 +119,7 @@
     },
     {
       "source": "/lingo.apk",
-      "destination": "/downloads/lingo-v1.0.3.apk"
+      "destination": "/downloads/lingo-v1.0.4.apk"
     },
     {
       "source": "/((?!api(?:/|$)|downloads/|apk-manifest\\.json$).*)",
