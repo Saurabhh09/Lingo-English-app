@@ -1487,25 +1487,33 @@ function App() {
                         <Settings size={16} />
                       </button>
                     </div>
-                    <div className="goal-ring">
-                      <svg viewBox="0 0 170 170">
-                        <circle cx="85" cy="85" r="69" stroke="#ededdf" strokeWidth="10" fill="none" />
-                        <circle
-                          cx="85" cy="85" r="69" stroke="#58cc02" strokeWidth="10" fill="none" strokeLinecap="round"
-                          strokeDasharray="434"
-                          strokeDashoffset={434 * (1 - Math.min(1, progress.todayWords / progress.goal))}
-                          transform="rotate(-90 85 85)"
-                        />
-                      </svg>
-                      <div>
-                        <span className="goal-emoji">🌱</span>
-                        <strong>{Math.min(100, Math.round(progress.todayWords / progress.goal * 100))}<small>%</small></strong>
-                        <span>of your daily goal</span>
-                      </div>
-                    </div>
-                    <p>{progress.todayWords >= progress.goal ? 'You did it! A little win worth celebrating.' : 'A few words today. A more confident you tomorrow.'}</p>
+                    {(() => {
+                      const safeGoal = Math.max(1, Number(progress.goal) || 10);
+                      const safeToday = Math.max(0, Number(progress.todayWords) || 0);
+                      return (
+                        <>
+                          <div className="goal-ring">
+                            <svg viewBox="0 0 170 170">
+                              <circle cx="85" cy="85" r="69" stroke="#ededdf" strokeWidth="10" fill="none" />
+                              <circle
+                                cx="85" cy="85" r="69" stroke="#58cc02" strokeWidth="10" fill="none" strokeLinecap="round"
+                                strokeDasharray="434"
+                                strokeDashoffset={434 * (1 - Math.min(1, safeToday / safeGoal))}
+                                transform="rotate(-90 85 85)"
+                              />
+                            </svg>
+                            <div>
+                              <span className="goal-emoji">🌱</span>
+                              <strong>{Math.min(100, Math.round((safeToday / safeGoal) * 100))}<small>%</small></strong>
+                              <span>of your daily goal</span>
+                            </div>
+                          </div>
+                          <p>{safeToday >= safeGoal ? 'You did it! A little win worth celebrating.' : 'A few words today. A more confident you tomorrow.'}</p>
+                        </>
+                      );
+                    })()}
                     <div className="goal-footer">
-                      <Target size={15} /><span>{progress.goal} words a day</span>
+                      <Target size={15} /><span>{Math.max(1, Number(progress.goal) || 10)} words a day</span>
                       <button onClick={() => setModal({ type: 'goal' })}>Edit goal</button>
                     </div>
                   </section>
@@ -1560,7 +1568,7 @@ function App() {
                           <div key={i} className={'chart-day ' + (i === 6 ? 'today' : '')}>
                             <span className="chart-value">{v || ''}</span>
                             <div className="bar-background">
-                              <i style={{ height: Math.max(7, Math.min(100, v / progress.goal * 100)) + '%' }} className={v ? '' : 'empty'} />
+                              <i style={{ height: Math.max(7, Math.min(100, (v / Math.max(1, Number(progress.goal) || 10)) * 100)) + '%' }} className={v ? '' : 'empty'} />
                             </div>
                             <span>{d.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 1)}</span>
                             {i === 6 && <i className="today-dot" />}
