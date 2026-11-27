@@ -56,6 +56,14 @@ export function AIConversationTutor({ scenarios = [], api, updateProgress, userC
     }
   }, [messages, busy]);
 
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.abort(); } catch { }
+      }
+    };
+  }, []);
+
   function speakText(text) {
     speakEnglishText(text, { rate: 0.85 });
   }
