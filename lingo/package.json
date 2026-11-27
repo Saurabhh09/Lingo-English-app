@@ -38,7 +38,7 @@
     "@capacitor/local-notifications": "^7.0.7",
     "@capacitor/preferences": "^7.0.4",
     "@capacitor/splash-screen": "^7.0.5",
-    "@capacitor/status-bar": "^7.0.6",
+    "@capacitor/status-bar": "^8.0.4",
     "@supabase/supabase-js": "^2.99.0",
     "@vitejs/plugin-react": "^6.1.2",
     "dotenv": "^17.2.3",
