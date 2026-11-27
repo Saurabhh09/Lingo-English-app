@@ -299,6 +299,28 @@ try {
   assert.equal(envProbe.status, 404, 'Dotfiles such as /.env must return 404');
   log('STATIC_ENV_PROBE', false, `GET /.env status=${envProbe.status}`);
 
+  // 13. Session revocation (logout-all) & permanent account deletion (DELETE /api/me)
+  const delUser = 'sdel_' + String(Date.now()).slice(-8);
+  const delSignup = await req('/auth/signup', { body: { username: delUser, name: 'Delete Me', password: 'PasswordDel123!' } });
+  const delLogin2 = await req('/auth/login', { body: { username: delUser, password: 'PasswordDel123!' } });
+  assert.equal(delSignup.status, 200);
+  assert.equal(delLogin2.status, 200);
+  const tokDel1 = delSignup.data.token;
+  const tokDel2 = delLogin2.data.token;
+  const logoutAllRes = await req('/auth/logout-all', { token: tokDel1, body: {} });
+  assert.equal(logoutAllRes.status, 200);
+  assert.equal((await req('/me', { token: tokDel1 })).status, 401, 'Token 1 must be revoked after logout-all');
+  assert.equal((await req('/me', { token: tokDel2 })).status, 401, 'Token 2 must be revoked after logout-all');
+  const delLogin3 = await req('/auth/login', { body: { username: delUser, password: 'PasswordDel123!' } });
+  const tokDel3 = delLogin3.data.token;
+  const delBad = await req('/me', { token: tokDel3, method: 'DELETE', body: { confirmUsername: 'wrong_name' } });
+  assert.equal(delBad.status, 400);
+  const delOk = await req('/me', { token: tokDel3, method: 'DELETE', body: { confirmUsername: delUser } });
+  assert.equal(delOk.status, 200);
+  assert.equal((await req('/me', { token: tokDel3 })).status, 401, 'Deleted user token must fail');
+  assert.equal((await req('/auth/login', { body: { username: delUser, password: 'PasswordDel123!' } })).status, 401, 'Deleted user must not be able to log in');
+  log('SESSION_REVOKE_AND_ACCOUNT_DELETE', false, 'logout-all=401, delete-account=200/401');
+
 } finally {
   await srv.stop();
 }

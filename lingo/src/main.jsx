@@ -1937,6 +1937,36 @@ function App() {
                 >
                   <LogOut size={17} /> Sign out
                 </button>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                  <button
+                    type="button"
+                    className="button light compact"
+                    style={{ flex: 1 }}
+                    onClick={async () => {
+                      try { await api('/auth/logout-all', {}); } catch (e) { console.warn('Logout all:', e); }
+                      token.current = null;
+                      localStorage.removeItem('lingo-token');
+                      localStorage.removeItem('lingo-game');
+                      localStorage.removeItem('lingo-solo');
+                      setModal(null);
+                      setUser(null);
+                      setProgress(null);
+                      setGame(null);
+                      navigate('home');
+                      notify('Signed out of all devices.');
+                    }}
+                  >
+                    Sign out everywhere
+                  </button>
+                  <button
+                    type="button"
+                    className="button light compact"
+                    style={{ flex: 1, color: '#b91c1c' }}
+                    onClick={() => setModal({ type: 'delete-account', confirmInput: '', busy: false, error: '' })}
+                  >
+                    Delete account
+                  </button>
+                </div>
               </div>
             )}
 
@@ -2128,6 +2158,63 @@ function App() {
                       {progress.goal === goal && <Check size={19} />}
                     </button>
                   ))}
+                </div>
+              </>
+            )}
+
+            {modal.type === 'delete-account' && (
+              <>
+                <span className="modal-emoji">⚠️</span>
+                <span className="eyebrow">PERMANENT ACCOUNT DELETION</span>
+                <h2>Delete your account?</h2>
+                <p className="modal-description">
+                  This permanently erases your profile, learning progress, badges, friends, and active sessions. Type <strong>{user?.username}</strong> to confirm.
+                </p>
+                <input
+                  type="text"
+                  className="profile-name-input"
+                  placeholder={`Type ${user?.username || 'username'}`}
+                  value={modal.confirmInput || ''}
+                  onChange={e => setModal(m => ({ ...m, confirmInput: e.target.value, error: '' }))}
+                  disabled={modal.busy}
+                />
+                {modal.error && <div className="form-error">{modal.error}</div>}
+                <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
+                  <button
+                    type="button"
+                    className="button light"
+                    style={{ flex: 1 }}
+                    disabled={modal.busy}
+                    onClick={() => setModal(null)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="button primary"
+                    style={{ flex: 1, background: '#dc2626', borderColor: '#b91c1c' }}
+                    disabled={modal.busy || (modal.confirmInput || '').toLowerCase().trim() !== (user?.username || '')}
+                    onClick={async () => {
+                      setModal(m => ({ ...m, busy: true, error: '' }));
+                      try {
+                        await api('/me', { confirmUsername: modal.confirmInput }, 'DELETE');
+                        token.current = null;
+                        localStorage.removeItem('lingo-token');
+                        localStorage.removeItem('lingo-game');
+                        localStorage.removeItem('lingo-solo');
+                        setModal(null);
+                        setUser(null);
+                        setProgress(null);
+                        setGame(null);
+                        navigate('home');
+                        notify('Your account has been permanently deleted.');
+                      } catch (e) {
+                        setModal(m => ({ ...m, busy: false, error: e?.message || 'Unable to delete account.' }));
+                      }
+                    }}
+                  >
+                    {modal.busy ? 'Deleting…' : 'Delete forever'}
+                  </button>
                 </div>
               </>
             )}

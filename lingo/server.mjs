@@ -46,11 +46,11 @@ const PRESET_TOPIC_NAMES = new Set([
   'Interview preparation'
 ]);
 const root = path.dirname(fileURLToPath(import.meta.url));
-if (fs.existsSync(path.join(root, '.env'))) {
+if (fs.existsSync(path.join(root, '.env')) && process.env.LINGO_NO_DOTENV !== '1') {
   const envContent = fs.readFileSync(path.join(root, '.env'), 'utf8');
   for (const line of envContent.split(/\r?\n/)) {
     const m = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
-    if (m && !process.env[m[1]]) {
+    if (m && process.env[m[1]] === undefined) {
       process.env[m[1]] = m[2] ? m[2].trim().replace(/^['"](.*)['"]$/, '$1') : '';
     }
   }
@@ -115,6 +115,9 @@ app.use((req, res, next) => {
   next();
 });
 const connected = (process.env.NODE_ENV !== 'production' && process.env.ISOLATED_TEST) ? false : !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+if (process.env.NODE_ENV === 'production' && !connected) {
+  throw new Error('Production startup aborted: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be configured when NODE_ENV=production.');
+}
 const supabase = connected ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } }) : null;
 const dataPath = (process.env.NODE_ENV !== 'production' && process.env.DATA_PATH) ? path.resolve(process.env.DATA_PATH) : path.join(root, 'data.json');
 let local = fs.existsSync(dataPath) ? JSON.parse(fs.readFileSync(dataPath, 'utf8')) : { accounts: {}, sessions: {}, progress: {}, games: {}, solo: {} };
@@ -449,21 +452,45 @@ app.get('/api/rewards/catalog', (_, res) => { res.set('Cache-Control', 'public, 
 app.get('/api/ai/status', (_, res) => res.json(getAIStatus()));
 const initialProgress = (demo = false) => ({ xp: demo ? 1240 : 0, gems: 0, words: demo ? 450 : 0, streak: demo ? 7 : 0, completed: [], checkpoints: [], saved: [], rewards: {}, walletLedger: [], certificates: {}, goal: 10, todayWords: 0, lastStudy: null, history: {}, dailyDate: today(), practice: { listening: [], speaking: [], pronunciation: [], conversation: [] } });
 const publicUser = u => ({ username: u.username, lingoId: u.lingoId || deriveLingoId(u.username), name: u.name, avatar: u.avatar || '🌱', avatarColor: u.avatarColor || 'lime', demo: u.demo });
-async function session(u) { const token = id() + id(); await db.set('sessions', hash(token), { username: u.username, expires: Date.now() + 30 * 86400000 }); return token; }
-app.post('/api/auth/signup', route(async (req, res) => { const { name, password } = req.body; const username = String(req.body.username || '').toLowerCase().trim(); if (!/^[a-z0-9_]{3,20}$/.test(username)) fail('Use 3–20 letters, numbers, or underscores for your username.'); if (typeof name !== 'string' || !name.trim() || name.length > 40) fail('Please enter a name (up to 40 characters).'); if (typeof password !== 'string' || password.length < 8 || password.length > 128) fail('Choose a password with 8–128 characters.'); await locked('signup:' + username, async () => { if (await db.get('accounts', username)) fail('That username is taken. Try another one.', 409); const salt = id(); const u = { username, lingoId: deriveLingoId(username), avatar: '🌱', avatarColor: 'lime', name: name.trim(), salt, password: scryptSync(password, salt, 64).toString('hex'), demo: false }; await db.set('accounts', username, u); await db.set('progress', username, initialProgress()); res.json({ token: await session(u), user: publicUser(u), progress: initialProgress() }); }); }));
-app.post('/api/auth/login', route(async (req, res) => { const username = String(req.body.username || '').toLowerCase().trim(); const u = await db.get('accounts', username); if (!u || typeof req.body.password !== 'string' || req.body.password.length > 128 || !timingSafeEqual(Buffer.from(u.password, 'hex'), scryptSync(req.body.password, u.salt, 64))) fail('Username or password doesn’t match.', 401); if (!u.lingoId || !u.avatar || !u.avatarColor) { u.lingoId = u.lingoId || deriveLingoId(u.username); u.avatar = u.avatar || '🌱'; u.avatarColor = u.avatarColor || 'lime'; await db.set('accounts', username, u); } res.json({ token: await session(u), user: publicUser(u), progress: await db.get('progress', username) }); }));
+const DUMMY_SCRYPT_SALT = 'lingo-constant-time-dummy-salt-v1';
+const DUMMY_SCRYPT_HASH = scryptSync('lingo-dummy-invalid-password', DUMMY_SCRYPT_SALT, 64);
+async function session(u) { const token = id() + id(); await db.set('sessions', hash(token), { username: u.username, tokenVersion: u.tokenVersion || 0, expires: Date.now() + 30 * 86400000 }); return token; }
+app.post('/api/auth/signup', route(async (req, res) => { const body = req.body || {}; const { name, password } = body; const username = String(body.username || '').toLowerCase().trim(); if (!/^[a-z0-9_]{3,20}$/.test(username)) fail('Use 3–20 letters, numbers, or underscores for your username.'); if (typeof name !== 'string' || !name.trim() || name.length > 40) fail('Please enter a name (up to 40 characters).'); if (typeof password !== 'string' || password.length < 8 || password.length > 128) fail('Choose a password with 8–128 characters.'); await locked('signup:' + username, async () => { if (await db.get('accounts', username)) fail('That username is taken. Try another one.', 409); const salt = id(); const u = { username, lingoId: deriveLingoId(username), avatar: '🌱', avatarColor: 'lime', name: name.trim(), salt, password: scryptSync(password, salt, 64).toString('hex'), tokenVersion: 0, demo: false }; await db.set('accounts', username, u); await db.set('progress', username, initialProgress()); res.json({ token: await session(u), user: publicUser(u), progress: initialProgress() }); }); }));
+app.post('/api/auth/login', route(async (req, res) => {
+  const body = req.body || {};
+  const username = String(body.username || '').toLowerCase().trim();
+  const pwd = typeof body.password === 'string' && body.password.length <= 128 ? body.password : null;
+  const u = username ? await db.get('accounts', username) : null;
+  if (!u || !pwd || !u.salt || !u.password) {
+    const candidate = scryptSync(pwd || 'invalid-password-probe', DUMMY_SCRYPT_SALT, 64);
+    timingSafeEqual(DUMMY_SCRYPT_HASH, candidate);
+    fail('Username or password doesn’t match.', 401);
+  }
+  const expectedBuf = Buffer.from(u.password, 'hex');
+  const candidateBuf = scryptSync(pwd, u.salt, 64);
+  if (expectedBuf.length !== candidateBuf.length || !timingSafeEqual(expectedBuf, candidateBuf)) {
+    fail('Username or password doesn’t match.', 401);
+  }
+  if (!u.lingoId || !u.avatar || !u.avatarColor) {
+    u.lingoId = u.lingoId || deriveLingoId(u.username);
+    u.avatar = u.avatar || '🌱';
+    u.avatarColor = u.avatarColor || 'lime';
+    await db.set('accounts', username, u);
+  }
+  res.json({ token: await session(u), user: publicUser(u), progress: await db.get('progress', username) });
+}));
 app.post('/api/auth/demo', route(async (req, res) => {
   if (connected) {
     fail('Demo accounts cannot be created when connected to Supabase. Please sign in or create an account.', 403);
   }
   const username = 'demo_' + id().slice(0, 12), salt = id();
-  const u = { username, name: 'Jamie', demo: true, salt, password: scryptSync(id(), salt, 64).toString('hex') };
+  const u = { username, name: 'Jamie', demo: true, salt, password: scryptSync(id(), salt, 64).toString('hex'), tokenVersion: 0 };
   await db.set('accounts', username, u);
   const progress = initialProgress(true);
   await db.set('progress', username, progress);
   res.json({ token: await session(u), user: publicUser(u), progress });
 }));
-app.use('/api', async (req, res, next) => { try { const token = (req.headers.authorization || '').replace(/^Bearer /, ''); const s = token && await db.get('sessions', hash(token)); if (!s || s.expires < Date.now()) fail('Please sign in to continue.', 401); req.user = await db.get('accounts', s.username); if (!req.user) fail('Please sign in again.', 401); req.sessionKey = hash(token); next(); } catch (e) { next(e); } });
+app.use('/api', async (req, res, next) => { try { const token = (req.headers.authorization || '').replace(/^Bearer /, ''); const s = token && await db.get('sessions', hash(token)); if (!s || s.expires < Date.now()) fail('Please sign in to continue.', 401); req.user = await db.get('accounts', s.username); if (!req.user || (s.tokenVersion ?? 0) !== (req.user.tokenVersion ?? 0)) fail('Please sign in again.', 401); req.sessionKey = hash(token); next(); } catch (e) { next(e); } });
 app.get('/api/me', route(async (req, res) => {
   if (!req.user.lingoId || !req.user.avatar || !req.user.avatarColor) {
     req.user.lingoId = req.user.lingoId || deriveLingoId(req.user.username);
@@ -590,7 +617,81 @@ app.post('/api/rewards/:id/claim', route(async (req, res) => {
     });
   });
 }));
+async function revokeAllUserSessions(username) {
+  if (supabase) {
+    await supabase.from('lingo_sessions').delete().eq('payload->>username', username);
+    return;
+  }
+  let dirty = false;
+  for (const [k, v] of Object.entries(local.sessions || {})) {
+    if (v?.username === username) {
+      delete local.sessions[k];
+      dirty = true;
+    }
+  }
+  if (dirty) {
+    try { fs.writeFileSync(dataPath + '.tmp', JSON.stringify(local)); fs.renameSync(dataPath + '.tmp', dataPath); } catch { fs.writeFileSync(dataPath, JSON.stringify(local)); }
+  }
+}
 app.post('/api/auth/logout', route(async (req, res) => { await db.del('sessions', req.sessionKey); res.json({ ok: true }); }));
+app.post('/api/auth/logout-all', route(async (req, res) => {
+  const uname = req.user.username;
+  await locked(uname, async () => {
+    const acc = await db.get('accounts', uname);
+    if (acc) {
+      acc.tokenVersion = (acc.tokenVersion || 0) + 1;
+      await db.set('accounts', uname, acc);
+    }
+    await revokeAllUserSessions(uname);
+    res.json({ ok: true });
+  });
+}));
+app.delete('/api/me', route(async (req, res) => {
+  const uname = req.user.username;
+  const confirmUsername = String(req.body?.confirmUsername || '').toLowerCase().trim().replace(/^@+/, '');
+  if (!confirmUsername || confirmUsername !== uname) {
+    fail('Type your username to confirm permanent account deletion.', 400);
+  }
+  await locked(uname, async () => {
+    await locked('social:global', async () => {
+      const s = await getSocialState();
+      s.friendships = s.friendships.filter(f => f.userOneId !== uname && f.userTwoId !== uname);
+      s.friendRequests = s.friendRequests.filter(r => r.senderId !== uname && r.receiverId !== uname);
+      s.blocks = s.blocks.filter(b => b.blockerId !== uname && b.blockedId !== uname);
+      s.communityInvitations = s.communityInvitations.filter(ci => ci.inviterId !== uname && ci.inviteeId !== uname);
+      s.gameInvitations = s.gameInvitations.filter(gi => gi.senderId !== uname && gi.receiverId !== uname);
+      s.notifications = s.notifications.filter(n => n.userId !== uname);
+      delete s.presence[uname];
+
+      const ownedComms = s.communities.filter(c => c.ownerId === uname).map(c => c.id);
+      s.communityMembers = s.communityMembers.filter(m => m.userId !== uname && !ownedComms.includes(m.communityId));
+      s.communities = s.communities.filter(c => c.ownerId !== uname);
+      s.communityInvitations = s.communityInvitations.filter(ci => !ownedComms.includes(ci.communityId));
+      await saveSocialState(s);
+    });
+    await revokeAllUserSessions(uname);
+    await Promise.all([
+      db.del('accounts', uname).catch(() => { }),
+      db.del('progress', uname).catch(() => { }),
+      db.del('solo', uname).catch(() => { })
+    ]);
+    if (supabase) {
+      await Promise.allSettled([
+        supabase.from('user_badges').delete().eq('user_id', uname),
+        supabase.from('achievement_progress').delete().eq('user_id', uname),
+        supabase.from('user_rewards').delete().eq('user_id', uname),
+        supabase.from('wallet_transactions').delete().eq('user_id', uname),
+        supabase.from('notifications').delete().eq('user_id', uname),
+        supabase.from('user_blocks').delete().or(`blocker_id.eq.${uname},blocked_id.eq.${uname}`),
+        supabase.from('friendships').delete().or(`user_one_id.eq.${uname},user_two_id.eq.${uname}`),
+        supabase.from('friend_requests').delete().or(`sender_id.eq.${uname},receiver_id.eq.${uname}`),
+        supabase.from('community_members').delete().eq('user_id', uname),
+        supabase.from('communities').delete().eq('owner_id', uname)
+      ]);
+    }
+    res.json({ ok: true, deleted: true });
+  });
+}));
 app.get('/api/admin/curriculum/validate', requireAdmin, (req, res) => {
   const report = validateCurriculumCatalog(CURRICULUM_CATALOG);
   res.json(report);
