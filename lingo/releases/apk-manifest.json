@@ -1,9 +1,9 @@
 {
-  "versionCode": 4,
-  "versionName": "1.0.4",
-  "downloadFilename": "lingo-v1.0.4.apk",
-  "downloadPath": "/downloads/lingo-v1.0.4.apk",
-  "sha256": "61291622ce2b0aa18ad41e9809f2bd409e2b75ba03cf95ed17d82ae56afbf3ed",
-  "size": 10941282,
-  "builtAt": "2026-11-27T14:54:04.426Z"
+  "versionCode": 5,
+  "versionName": "1.0.5",
+  "downloadFilename": "lingo-v1.0.5.apk",
+  "downloadPath": "/downloads/lingo-v1.0.5.apk",
+  "sha256": "875923932fac80628e742e2d2eee5996215f30cd5ef65072dc54214d979e29f1",
+  "size": 10943278,
+  "builtAt": "2026-11-27T16:06:51.789Z"
 }
