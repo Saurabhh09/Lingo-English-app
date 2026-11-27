@@ -33,6 +33,7 @@ import { NotificationsModal } from './components/Social/SocialModals.jsx';
 import { RemindersSettingsPage } from './components/Social/RemindersSettingsPage.jsx';
 import { WebSidebar } from './components/Web/WebSidebar.jsx';
 import { BadgeUnlockModal } from './components/Achievements/BadgeUnlockModal.jsx';
+import { ErrorBoundary } from './components/ErrorBoundary.jsx';
 import { AchievementsSection } from './components/Achievements/AchievementsSection.jsx';
 import { BadgeArtwork } from './components/Achievements/BadgeArtwork.jsx';
 import { RewardOpeningModal } from './components/Rewards/RewardOpeningModal.jsx';
@@ -3088,4 +3089,8 @@ function Lesson({ lesson, api, updateProgress, onCompleteCheckpoint, savedWords 
 }
 
 configureWebPlatformDocument();
-createRoot(document.getElementById('root')).render(<App />);
+createRoot(document.getElementById('root')).render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
+);
