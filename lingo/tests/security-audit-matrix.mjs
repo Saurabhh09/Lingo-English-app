@@ -43,17 +43,22 @@ try {
   }
   log('UNAUTH_GET_CORE', unauthFailures.length > 0, unauthFailures.length ? unauthFailures.join(', ') : 'All 8 return 401');
 
-  // 2. Unauthenticated answer key leak via /curriculum/exercises/check & /pronunciation/evaluate
+  // 2. Unauthenticated answer key leak via /curriculum/exercises/check & /pronunciation/evaluate + locked lesson 403
   const keyLeak = await req('/curriculum/exercises/check', {
     body: { lessonId: lessons[lessons.length - 1].id, exerciseIndex: 0, choice: 0 }
   });
-  log('EXERCISES_CHECK_UNAUTH_LEAK', keyLeak.status === 200 && Number.isInteger(keyLeak.data?.correctIndex),
-    `status=${keyLeak.status}, body=${JSON.stringify(keyLeak.data)}`);
-
   const pronUnauth = await req('/pronunciation/evaluate', {
     body: { targetPhrase: 'Hello world', spokenTranscript: 'Hello world' }
   });
-  log('PRONUNCIATION_UNAUTH', pronUnauth.status === 200, `status=${pronUnauth.status}`);
+  const lockedCheck = await req('/curriculum/exercises/check', {
+    token: tokA,
+    body: { lessonId: lessons[lessons.length - 1].id, exerciseIndex: 0, choice: 0 }
+  });
+  assert.equal(keyLeak.status, 401, 'Unauthenticated /curriculum/exercises/check must return 401');
+  assert.equal(pronUnauth.status, 401, 'Unauthenticated /pronunciation/evaluate must return 401');
+  assert.equal(lockedCheck.status, 403, 'Authenticated check on locked lesson must return 403');
+  log('EXERCISES_CHECK_UNAUTH_LEAK', false, `unauthCheck=${keyLeak.status}, lockedCheck=${lockedCheck.status}`);
+  log('PRONUNCIATION_UNAUTH', false, `status=${pronUnauth.status}`);
 
   // 3. Client-trusted Checkpoint XP / Fake Checkpoint ID cheat + legitimate server-graded checkpoint
   const preCp = await req('/me', { token: tokB });

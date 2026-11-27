@@ -60,12 +60,20 @@ console.log('PASS A: Lesson loading, 404 handling, sequential ordering, and answ
 // -------------------------------------------------------------
 console.log('\n[SECTION B: EXERCISE EVALUATION & ANSWER SECURITY]');
 
+const sectionBSignup = await request('/auth/signup', {
+  username: 'p10b_' + Math.floor(Math.random() * 10000000),
+  name: 'Phase 10 Section B',
+  password: 'Password123!'
+});
+assert.equal(sectionBSignup.status, 200);
+const sectionBToken = sectionBSignup.data.token;
+
 // B1: Evaluation validates choices without leaking keys on invalid inputs
 const badChoiceReq = await request('/curriculum/exercises/check', {
   lessonId: 'hello',
   exerciseIndex: 0,
   choice: 99 // out of bounds
-});
+}, sectionBToken);
 assert.equal(badChoiceReq.status, 400, 'Out-of-bounds choice must be rejected with 400');
 assert.equal(badChoiceReq.data.correctIndex, undefined, 'Malformed choice must not leak correctIndex');
 
@@ -73,14 +81,14 @@ const badIndexReq = await request('/curriculum/exercises/check', {
   lessonId: 'hello',
   exerciseIndex: 10, // out of bounds (only 0..4 exist)
   choice: 0
-});
+}, sectionBToken);
 assert.equal(badIndexReq.status, 400, 'Out-of-bounds exerciseIndex must be rejected with 400');
 
 const badLessonExReq = await request('/curriculum/exercises/check', {
   lessonId: 'nonexistent_lesson_abc',
   exerciseIndex: 0,
   choice: 0
-});
+}, sectionBToken);
 assert.equal(badLessonExReq.status, 404, 'Nonexistent lesson in exercise check must return 404');
 
 const mismatchIdReq = await request('/curriculum/exercises/check', {
@@ -88,7 +96,7 @@ const mismatchIdReq = await request('/curriculum/exercises/check', {
   exerciseIndex: 0,
   choice: 0,
   exerciseId: 'wrong_exercise_id_xyz'
-});
+}, sectionBToken);
 assert.equal(mismatchIdReq.status, 400, 'Mismatched exerciseId must be rejected with 400');
 
 // B2: Server-side grading of root lesson (hello) for valid choices
@@ -101,7 +109,7 @@ const correctRes = await request('/curriculum/exercises/check', {
   exerciseIndex: 0,
   choice: correctChoice,
   exerciseId: helloKeys[0].id
-});
+}, sectionBToken);
 assert.equal(correctRes.status, 200);
 assert.equal(correctRes.data.isCorrect, true);
 assert.equal(correctRes.data.correctIndex, correctChoice);
@@ -111,7 +119,7 @@ const wrongRes = await request('/curriculum/exercises/check', {
   exerciseIndex: 0,
   choice: wrongChoice,
   exerciseId: helloKeys[0].id
-});
+}, sectionBToken);
 assert.equal(wrongRes.status, 200);
 assert.equal(wrongRes.data.isCorrect, false);
 assert.equal(wrongRes.data.correctIndex, correctChoice);

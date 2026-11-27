@@ -326,40 +326,6 @@ app.get('/api/practice/catalog', (_, res) => { res.set('Cache-Control', 'public,
 app.get('/api/badges', (_, res) => { res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=600'); res.json(CACHED_BADGES_CATALOG); });
 app.get('/api/rewards/catalog', (_, res) => { res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=600'); res.json(CACHED_REWARDS_CATALOG); });
 app.get('/api/ai/status', (_, res) => res.json(getAIStatus()));
-app.post('/api/pronunciation/evaluate', route(async (req, res) => {
-  const { targetPhrase, spokenTranscript, spokenText, transcript } = req.body;
-  const spoken = spokenTranscript || spokenText || transcript || '';
-  if (!targetPhrase || typeof targetPhrase !== 'string') fail('Target phrase is required.', 400);
-  res.json(evaluatePronunciation(targetPhrase, spoken));
-}));
-app.post('/api/curriculum/exercises/check', route(async (req, res) => {
-  const { lessonId, exerciseIndex, choice, exerciseId } = req.body;
-  if (typeof lessonId !== 'string' || !lessonId.trim()) fail('Lesson ID is required.', 400);
-  const keys = getLessonSolutionKeys(lessonId);
-  if (!keys) fail('Lesson not found.', 404);
-  if (!Number.isInteger(exerciseIndex) || exerciseIndex < 0 || exerciseIndex >= keys.length) fail('Invalid exercise index.', 400);
-  if (!Number.isInteger(choice) || choice < 0 || choice > 3) fail('Invalid choice. Must be an option index between 0 and 3.', 400);
-  if (exerciseId !== undefined && exerciseId !== keys[exerciseIndex].id) fail('Exercise ID mismatch for submitted index.', 400);
-
-  // Prerequisite verification: if authenticated, ensure learner has unlocked the lesson
-  const token = (req.headers.authorization || '').replace(/^Bearer /, '');
-  if (token) {
-    const s = await db.get('sessions', hash(token));
-    if (s && s.expires >= Date.now()) {
-      const authUser = await db.get('accounts', s.username);
-      if (authUser) {
-        const userProgress = await db.get('progress', authUser.username);
-        const prereqCheck = checkLessonPrerequisites(lessonId, userProgress?.completed || []);
-        if (!prereqCheck.unlocked) {
-          fail('Complete the prerequisite lesson first before checking exercises.', 403);
-        }
-      }
-    }
-  }
-  const correctIndex = keys[exerciseIndex].solutionKey.correctIndex;
-  const isCorrect = correctIndex === choice;
-  res.json({ isCorrect, correctIndex });
-}));
 const initialProgress = (demo = false) => ({ xp: demo ? 1240 : 0, gems: 0, words: demo ? 450 : 0, streak: demo ? 7 : 0, completed: [], checkpoints: [], saved: [], rewards: {}, walletLedger: [], certificates: {}, goal: 10, todayWords: 0, lastStudy: null, history: {}, dailyDate: today(), practice: { listening: [], speaking: [], pronunciation: [], conversation: [] } });
 const publicUser = u => ({ username: u.username, lingoId: u.lingoId || deriveLingoId(u.username), name: u.name, avatar: u.avatar || '🌱', avatarColor: u.avatarColor || 'lime', demo: u.demo });
 async function session(u) { const token = id() + id(); await db.set('sessions', hash(token), { username: u.username, expires: Date.now() + 30 * 86400000 }); return token; }
@@ -413,6 +379,31 @@ app.get('/api/me', route(async (req, res) => {
       newlyAvailableRewards: rewardEval.newlyAvailable
     });
   });
+}));
+app.post('/api/pronunciation/evaluate', route(async (req, res) => {
+  const { targetPhrase, spokenTranscript, spokenText, transcript } = req.body || {};
+  const spoken = spokenTranscript || spokenText || transcript || '';
+  if (!targetPhrase || typeof targetPhrase !== 'string') fail('Target phrase is required.', 400);
+  if (targetPhrase.length > 500 || String(spoken).length > 1000) fail('Phrase length exceeds limit.', 400);
+  res.json(evaluatePronunciation(targetPhrase, String(spoken)));
+}));
+app.post('/api/curriculum/exercises/check', route(async (req, res) => {
+  const { lessonId, exerciseIndex, choice, exerciseId } = req.body || {};
+  if (typeof lessonId !== 'string' || !lessonId.trim()) fail('Lesson ID is required.', 400);
+  const keys = getLessonSolutionKeys(lessonId);
+  if (!keys) fail('Lesson not found.', 404);
+  if (!Number.isInteger(exerciseIndex) || exerciseIndex < 0 || exerciseIndex >= keys.length) fail('Invalid exercise index.', 400);
+  if (!Number.isInteger(choice) || choice < 0 || choice > 3) fail('Invalid choice. Must be an option index between 0 and 3.', 400);
+  if (exerciseId !== undefined && exerciseId !== keys[exerciseIndex].id) fail('Exercise ID mismatch for submitted index.', 400);
+
+  const userProgress = await db.get('progress', req.user.username);
+  const prereqCheck = checkLessonPrerequisites(lessonId, userProgress?.completed || []);
+  if (!prereqCheck.unlocked) {
+    fail('Complete the prerequisite lesson first before checking exercises.', 403);
+  }
+  const correctIndex = keys[exerciseIndex].solutionKey.correctIndex;
+  const isCorrect = correctIndex === choice;
+  res.json({ isCorrect, correctIndex });
 }));
 app.get('/api/achievements', route(async (req, res) => {
   await locked(req.user.username, async () => {

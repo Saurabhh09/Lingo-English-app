@@ -345,8 +345,8 @@ assert.equal(badGoal.status, 400, 'Invalid goal value must return 400');
 const nonAdminStatus = await req(TEST_URL, '/admin/status', null, tokA);
 assert.equal(nonAdminStatus.status, 403, 'Regular user accessing admin endpoint must be rejected with 403');
 
-// Answer key seclusion on public curriculum check
-const checkAns = await req(TEST_URL, '/curriculum/exercises/check', { lessonId: 'hello', exerciseIndex: 0, choice: 0 });
+// Answer key seclusion & authenticated check endpoint
+const checkAns = await req(TEST_URL, '/curriculum/exercises/check', { lessonId: 'hello', exerciseIndex: 0, choice: 0 }, tokA);
 assert.equal(checkAns.status, 200);
 assert.equal(typeof checkAns.data.isCorrect, 'boolean');
 assert.equal(typeof checkAns.data.solutionKey, 'undefined', 'solutionKey must not be returned');

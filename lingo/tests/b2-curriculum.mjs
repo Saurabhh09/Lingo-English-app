@@ -100,7 +100,21 @@ for (const lesson of b2Lessons) {
 }
 console.log('PASS 4: Zero answer keys leaked across all 20 B2 public lesson payloads');
 
-// 5. Server-Side Exercise Grading Endpoint for B2
+// 5. Server-Side Exercise Grading Endpoint for B2 (authenticated & sequential unlock)
+const currSignup = await request('/auth/signup', { username: 'b2c_' + Date.now(), name: 'B2 Test', password: 'Password123!' });
+assert.equal(currSignup.status, 200);
+const currToken = currSignup.data.token;
+for (const lvl of CURRICULUM_CATALOG.levels) {
+  if (lvl.id === 'b2') break;
+  for (const sec of lvl.sections) for (const u of sec.units) for (const l of u.lessons) {
+    const unlockRes = await request('/progress/lesson', {
+      lesson: l.id,
+      answers: getLessonSolutionKeys(l.id).map(k => k.solutionKey.correctIndex)
+    }, currToken);
+    assert.equal(unlockRes.status, 200);
+  }
+}
+
 for (const lesson of b2Lessons) {
   const keys = getLessonSolutionKeys(lesson.id);
   assert.equal(keys.length, 5);
@@ -111,7 +125,7 @@ for (const lesson of b2Lessons) {
     lessonId: lesson.id,
     exerciseIndex: 0,
     choice: ex0Key
-  });
+  }, currToken);
   assert.equal(checkCorrect.status, 200);
   assert.equal(checkCorrect.data.isCorrect, true);
   assert.equal(checkCorrect.data.correctIndex, ex0Key);
@@ -122,10 +136,16 @@ for (const lesson of b2Lessons) {
     lessonId: lesson.id,
     exerciseIndex: 0,
     choice: wrongChoice
-  });
+  }, currToken);
   assert.equal(checkWrong.status, 200);
   assert.equal(checkWrong.data.isCorrect, false);
   assert.equal(checkWrong.data.correctIndex, ex0Key);
+
+  const compRes = await request('/progress/lesson', {
+    lesson: lesson.id,
+    answers: keys.map(k => k.solutionKey.correctIndex)
+  }, currToken);
+  assert.equal(compRes.status, 200);
 }
 console.log('PASS 5: Server-side grading endpoint accurately checks correct and incorrect choices across B2 lessons without exposing keys beforehand');
 
