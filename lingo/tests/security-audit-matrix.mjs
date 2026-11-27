@@ -274,12 +274,19 @@ try {
   log('LESSON_RACE_DOUBLE_XP', (lRace1.data?.earned || 0) + (lRace2.data?.earned || 0) > lessons[0].xp,
     `earned=[${lRace1.data?.earned},${lRace2.data?.earned}], totalXp=${Math.max(lRace1.data?.progress?.xp || 0, lRace2.data?.progress?.xp || 0)}`);
 
-  // 10. Game room join brute-force rate limit & test hooks check
+  // 10. Game room join brute-force rate limit & idle room expiry check
+  const expRoom = await req('/games', { token: tokA, body: { topic: 'Grammar', difficulty: 'Beginner', duration: 1 } });
+  await req('/test/advance-clock', { body: { ms: 3 * 3600000 } });
+  const joinExpired = await req('/games/join', { token: tokB, body: { code: expRoom.data.code } });
+  await req('/test/reset-clock', { body: {} });
+  assert.equal(joinExpired.status, 400, 'Idle game room must expire after TTL');
+
   const joinAttempts = await Promise.all(
-    Array.from({ length: 30 }, (_, i) => req('/games/join', { token: tokB, body: { code: `DEAD${String(i).padStart(2, '0')}` } }))
+    Array.from({ length: 20 }, (_, i) => req('/games/join', { token: tokB, body: { code: `DEAD${String(i).padStart(2, '0')}` } }))
   );
-  log('GAME_JOIN_NO_RATE_LIMIT', !joinAttempts.some(r => r.status === 429),
-    `30 invalid room code joins -> any429=${joinAttempts.some(r => r.status === 429)}`);
+  assert.ok(joinAttempts.some(r => r.status === 429), 'Game room join burst must return 429');
+  log('GAME_JOIN_NO_RATE_LIMIT', false,
+    `20 invalid room code joins -> any429=${joinAttempts.some(r => r.status === 429)}, expiredRoomStatus=${joinExpired.status}`);
 
   // 11. Type confusion / malformed body test on login & signup
   const badLogin = await req('/auth/login', { body: { username: uA, password: { $ne: '' } } });
