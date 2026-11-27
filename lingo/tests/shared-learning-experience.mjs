@@ -3,10 +3,13 @@ import { CURRICULUM_CATALOG, getPublicLesson } from '../server/curriculumCatalog
 
 const root = 'http://localhost:3000/api';
 
-async function request(endpoint, body, method) {
+async function request(endpoint, body, method, token) {
   const response = await fetch(root + endpoint, {
     method: method || (body ? 'POST' : 'GET'),
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: 'Bearer ' + token } : {})
+    },
     ...(body ? { body: JSON.stringify(body) } : {})
   });
   return { status: response.status, data: await response.json() };
@@ -77,12 +80,20 @@ for (const sample of sampleLessons) {
 }
 console.log('PASS 1: Core learning data, primary objective, and answer key seclusion verified across Pre-A1, A1, A2, B1, B2');
 
-// 2. Test Single Exercise Checking API
+// 2. Test Single Exercise Checking API (authenticated)
+const sleUser = await request('/auth/signup', {
+  username: 'sle_' + Math.floor(Math.random() * 10000000),
+  name: 'Shared Experience User',
+  password: 'Password123!'
+}, 'POST');
+assert.equal(sleUser.status, 200);
+const sleToken = sleUser.data.token;
+
 const checkCorrect = await request('/curriculum/exercises/check', {
   lessonId: 'hello',
   exerciseIndex: 0,
   choice: 1
-}, 'POST');
+}, 'POST', sleToken);
 assert.equal(checkCorrect.status, 200);
 assert.equal(checkCorrect.data.isCorrect, true);
 assert.equal(checkCorrect.data.correctIndex, 1);
@@ -91,7 +102,7 @@ const checkIncorrect = await request('/curriculum/exercises/check', {
   lessonId: 'hello',
   exerciseIndex: 0,
   choice: 0
-}, 'POST');
+}, 'POST', sleToken);
 assert.equal(checkIncorrect.status, 200);
 assert.equal(checkIncorrect.data.isCorrect, false);
 assert.equal(checkIncorrect.data.correctIndex, 1);
@@ -107,7 +118,7 @@ const missingCheck = await request('/curriculum/exercises/check', {
   lessonId: 'non_existent_fake_id_123',
   exerciseIndex: 0,
   choice: 0
-}, 'POST');
+}, 'POST', sleToken);
 assert.equal(missingCheck.status, 404);
 
 console.log('PASS 3: Error handling and 404 status codes verified for missing/invalid lesson IDs');
