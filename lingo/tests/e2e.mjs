@@ -98,17 +98,39 @@ try {
   await expect(friend.locator('.question-prompt')).toBeVisible({ timeout: 12000 });
   console.log('PASS cross-browser lobby, joining by code, and host start');
 
-  const pool = questionPool('Mixed English', 'B1').concat(questionPool('Mixed English', 'Beginner'));
+  const pool = [
+    ...questionPool('Mixed English', 'B1'),
+    ...questionPool('Mixed English', 'Beginner'),
+    ...questionPool('Mixed English', 'Intermediate'),
+    ...questionPool('Mixed English', 'Advanced'),
+    ...lessons.flatMap(l => l.questions)
+  ];
   for (let round = 0; round < 3; round++) {
     const prompt = (await p.locator('.question-prompt').textContent())?.trim();
     const matchQ = pool.find(q => q[0] === prompt);
     const correctText = matchQ ? matchQ[1][matchQ[2]] : null;
     if (correctText) {
-      await p.locator('.answer-options button').filter({ hasText: correctText }).first().click();
-      const friendWrong = friend.locator('.answer-options button').filter({ hasNotText: correctText }).first();
-      await friendWrong.click();
+      const pBtns = p.locator('.answer-options button');
+      const pCount = await pBtns.count();
+      for (let i = 0; i < pCount; i++) {
+        const t = (await pBtns.nth(i).textContent())?.replace(/^[A-D]\s*/, '').trim();
+        if (t === correctText) { await pBtns.nth(i).click(); break; }
+      }
     } else {
       await p.locator('.answer-options button').first().click();
+    }
+
+    const fPrompt = (await friend.locator('.question-prompt').textContent())?.trim();
+    const fMatchQ = pool.find(q => q[0] === fPrompt);
+    const fCorrectText = fMatchQ ? fMatchQ[1][fMatchQ[2]] : null;
+    if (fCorrectText) {
+      const fBtns = friend.locator('.answer-options button');
+      const fCount = await fBtns.count();
+      for (let i = 0; i < fCount; i++) {
+        const t = (await fBtns.nth(i).textContent())?.replace(/^[A-D]\s*/, '').trim();
+        if (t && t !== fCorrectText) { await fBtns.nth(i).click(); break; }
+      }
+    } else {
       await friend.locator('.answer-options button').nth(1).click();
     }
     await p.getByRole('button', { name: /Submit Answer/i }).click();
