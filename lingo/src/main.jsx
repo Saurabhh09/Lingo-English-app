@@ -313,16 +313,17 @@ function App() {
       localStorage.removeItem('lingo-game');
       localStorage.removeItem('lingo-solo');
     } catch { }
-    refreshSocial().catch(() => { });
+    refreshSocial(d.user?.username).catch(() => { });
   };
 
-  async function refreshSocial() {
+  async function refreshSocial(explicitUsername = null) {
     if (!token.current) return null;
     try {
       const ov = await api('/social/overview');
       setSocialOverview(ov);
-      if (user?.username && ov?.notifications?.length) {
-        deliverAppNotificationsToDevice(ov.notifications, user.username).catch(() => { });
+      const activeUsername = explicitUsername || ov?.me?.username || user?.username;
+      if (activeUsername && ov?.notifications?.length) {
+        deliverAppNotificationsToDevice(ov.notifications, activeUsername).catch(() => { });
       }
       return ov;
     } catch {
@@ -450,7 +451,7 @@ function App() {
             if (Array.isArray(res?.badges) && res.badges.length) setBadgeCatalog(res.badges);
           })
           .catch(() => { });
-        refreshSocial().catch(() => { });
+        refreshSocial(d.user?.username).catch(() => { });
         try {
           const params = new URLSearchParams(window.location.search);
           if (params.get('invite')) {
@@ -924,7 +925,7 @@ function App() {
               topic: finalGame.topic || settings.topic || 'English Match',
               gameCode: finalGame.code
             }).catch(() => { });
-            refreshSocial().catch(() => { });
+            refreshSocial(user?.username).catch(() => { });
           } catch (invErr) {
             invitedMsg = invErr?.message || invitedMsg;
           }

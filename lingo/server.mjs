@@ -2004,14 +2004,14 @@ app.post('/api/social/presence', route(async (req, res) => {
       await saveSocialState(s, { syncTables: [] });
     }
 
-    const pendingFriendRequests = s.friendRequests.filter(
-      r => r.receiverId === req.user.username && r.status === 'pending'
+    const pendingFriendRequests = (s.friendRequests || []).filter(
+      r => r && r.receiverId === req.user.username && r.status === 'pending'
     ).length;
-    const pendingCommunityInvites = s.communityInvitations.filter(
-      i => i.inviteeId === req.user.username && i.status === 'pending'
+    const pendingCommunityInvites = (s.communityInvitations || []).filter(
+      i => i && i.inviteeId === req.user.username && i.status === 'pending'
     ).length;
-    const pendingGameInvs = s.gameInvitations.filter(
-      gi => gi.receiverId === req.user.username && gi.status === 'pending'
+    const pendingGameInvs = (s.gameInvitations || []).filter(
+      gi => gi && gi.receiverId === req.user.username && gi.status === 'pending'
     );
     let activeGameInv = null;
     if (pendingGameInvs.length) {
@@ -2020,7 +2020,7 @@ app.post('/api/social/presence', route(async (req, res) => {
         const g = games[idx];
         const gi = pendingGameInvs[idx];
         if (g && (g.status === 'waiting' || g.status === 'countdown')) {
-          const activeCount = Object.values(g.members || {}).filter(m => m.role !== 'spectator').length;
+          const activeCount = Object.values(g.members || {}).filter(m => m && m.role !== 'spectator').length;
           const senderAcc = await db.get('accounts', gi.senderId);
           activeGameInv = {
             ...gi,
@@ -2034,8 +2034,8 @@ app.post('/api/social/presence', route(async (req, res) => {
         }
       }
     }
-    const unreadNotifs = s.notifications.filter(
-      n => n.userId === req.user.username && !n.isRead
+    const unreadNotifs = (s.notifications || []).filter(
+      n => n && n.userId === req.user.username && !n.isRead
     ).length;
 
     res.json({

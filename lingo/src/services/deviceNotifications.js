@@ -289,14 +289,14 @@ export async function dispatchDeviceNotification({ uniqueKey, title, body, chann
 }
 
 export async function deliverAppNotificationsToDevice(notifications = [], myUsername = '') {
-  if (!Array.isArray(notifications) || notifications.length === 0) return 0;
+  if (!Array.isArray(notifications) || notifications.length === 0 || !myUsername) return 0;
   const prefs = getNotificationPrefs();
   if (!prefs.enabled) return 0;
 
   const seen = getDeliveredIdSet();
   let seenChanged = false;
   for (const n of notifications) {
-    if (n.isRead && n.id) {
+    if (n?.isRead && n?.id) {
       const k = `app:${myUsername}:${n.id}`;
       if (!seen.has(k)) {
         seen.add(k);
@@ -306,7 +306,7 @@ export async function deliverAppNotificationsToDevice(notifications = [], myUser
   }
 
   const pendingItems = [];
-  const unread = notifications.filter(n => !n.isRead).slice(0, 8);
+  const unread = notifications.filter(n => n && !n.isRead && n.id).slice(0, 8);
   for (const n of unread) {
     const key = `app:${myUsername}:${n.id}`;
     if (seen.has(key)) continue;
