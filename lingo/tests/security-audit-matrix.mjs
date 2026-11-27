@@ -184,8 +184,9 @@ try {
   await req('/social/blocks', { token: tokA, body: { username: uB, action: 'block' } });
   const bCommAfterBlock = await req(`/communities/${comm.data.community.id}`, { token: tokB });
   const bJoinBlockedGame = await req('/games/join', { token: tokB, body: { code: codeA } });
-  log('BLOCK_BYPASS_COMMUNITY_AND_GAME',
-    bCommAfterBlock.status === 200 || bJoinBlockedGame.status === 200,
+  assert.equal(bCommAfterBlock.status, 403, 'Blocked user must receive 403 on owner community');
+  assert.equal(bJoinBlockedGame.status, 403, 'Blocked user must receive 403 when trying to join room');
+  log('BLOCK_BYPASS_COMMUNITY_AND_GAME', false,
     `blocked community GET=${bCommAfterBlock.status}, blocked game join=${bJoinBlockedGame.status}`);
 
   // 7d: Unblock, check non-owner community mutations & non-host game invite/start
