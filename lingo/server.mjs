@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { lessons, questionPool } from './content.js';
 import { getPublicLevels, getPublicLesson, getLessonSolutionKeys, getLessonById, checkLessonPrerequisites, CURRICULUM_CATALOG } from './server/curriculumCatalog.mjs';
+import { getCheckpointUnitLessons } from './src/curriculumData.js';
 import { validateCurriculumCatalog } from './server/curriculumValidator.mjs';
 import { requireAdmin } from './server/adminAuth.mjs';
 import { getPublicPracticeCatalog, getListeningSolutionKeys, LISTENING_MODULES, SPEAKING_PROMPTS, PRONUNCIATION_ITEMS, CONVERSATION_SCENARIOS } from './server/practiceCatalog.mjs';
@@ -577,19 +578,71 @@ app.post('/api/progress/lesson', route(async (req, res) => {
   });
 }));
 app.post('/api/progress/checkpoint', route(async (req, res) => {
-  const { checkpointId, correct = 0, total = 5, xp = 40 } = req.body || {};
+  const { checkpointId, submissions } = req.body || {};
   if (typeof checkpointId !== 'string' || !checkpointId.startsWith('checkpoint-')) {
     fail('Invalid checkpoint ID.', 400);
   }
+  const cpInfo = getCheckpointUnitLessons(checkpointId);
+  if (!cpInfo || !Array.isArray(cpInfo.precedingRealIds) || cpInfo.precedingRealIds.length === 0) {
+    fail('Unknown or invalid checkpoint ID.', 400);
+  }
+  const cpItem = cpInfo.unit?.lessons?.find(l => l.isCheckpoint && l.id === checkpointId);
+  const canonicalXp = Number(cpItem?.xp) > 0 && Number(cpItem?.xp) <= 200 ? Number(cpItem.xp) : 40;
+  const totalUnitExercises = cpInfo.precedingRealIds.reduce((sum, id) => {
+    const keys = getLessonSolutionKeys(id);
+    return sum + (Array.isArray(keys) ? keys.length : 0);
+  }, 0);
+  const expectedCount = Math.min(5, totalUnitExercises);
+  if (expectedCount <= 0) {
+    fail('Checkpoint exercises are unavailable.', 400);
+  }
+  if (!Array.isArray(submissions) || submissions.length !== expectedCount) {
+    fail(`Submit all ${expectedCount} milestone review answers.`, 400);
+  }
+  const seenExercises = new Set();
+  let correct = 0;
+  for (const item of submissions) {
+    const { lessonId, exerciseIndex, choice, exerciseId } = item || {};
+    if (typeof lessonId !== 'string' || !cpInfo.precedingRealIds.includes(lessonId)) {
+      fail('Checkpoint exercise does not belong to this unit.', 400);
+    }
+    if (!Number.isInteger(exerciseIndex) || exerciseIndex < 0) {
+      fail('Invalid checkpoint exercise index.', 400);
+    }
+    if (!Number.isInteger(choice) || choice < 0 || choice > 3) {
+      fail('Invalid checkpoint answer choice.', 400);
+    }
+    const dedupeKey = `${lessonId}:${exerciseIndex}`;
+    if (seenExercises.has(dedupeKey)) {
+      fail('Duplicate checkpoint exercise submission.', 400);
+    }
+    seenExercises.add(dedupeKey);
+    const lessonKeys = getLessonSolutionKeys(lessonId);
+    const exKey = lessonKeys?.[exerciseIndex];
+    if (!exKey || !exKey.solutionKey) {
+      fail('Checkpoint exercise not found.', 400);
+    }
+    if (exerciseId !== undefined && exKey.id !== exerciseId) {
+      fail('Checkpoint exercise ID mismatch.', 400);
+    }
+    if (choice === exKey.solutionKey.correctIndex) {
+      correct += 1;
+    }
+  }
+  const total = submissions.length;
   await locked(req.user.username, async () => {
     const p = await db.get('progress', req.user.username);
     ensureAchievementState(p);
+    const missingUnitLessons = cpInfo.precedingRealIds.filter(id => !p.completed.includes(id));
+    if (missingUnitLessons.length > 0) {
+      fail('Complete all lessons in this unit to unlock this milestone review.', 400);
+    }
     if (!Array.isArray(p.checkpoints)) p.checkpoints = [];
     const passed = correct >= Math.ceil(total * 0.6);
     const fresh = !p.checkpoints.includes(checkpointId);
     let earned = 0;
     if (passed && fresh) {
-      earned = Number(xp) || 40;
+      earned = canonicalXp;
       p.checkpoints.push(checkpointId);
       p.xp += earned;
       p.words += total;

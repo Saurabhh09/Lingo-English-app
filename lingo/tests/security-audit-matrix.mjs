@@ -55,15 +55,59 @@ try {
   });
   log('PRONUNCIATION_UNAUTH', pronUnauth.status === 200, `status=${pronUnauth.status}`);
 
-  // 3. Client-trusted Checkpoint XP / Fake Checkpoint ID cheat
+  // 3. Client-trusted Checkpoint XP / Fake Checkpoint ID cheat + legitimate server-graded checkpoint
   const preCp = await req('/me', { token: tokB });
   const startXp = preCp.data.progress.xp;
   const cheatCp = await req('/progress/checkpoint', {
     token: tokB,
     body: { checkpointId: 'checkpoint-forged-999', correct: 1000, total: 1000, xp: 50000 }
   });
-  log('CHECKPOINT_XP_FORGE', cheatCp.status === 200 && cheatCp.data?.progress?.xp === startXp + 50000,
-    `status=${cheatCp.status}, earned=${cheatCp.data?.earned}, newXp=${cheatCp.data?.progress?.xp}, words=${cheatCp.data?.progress?.words}`);
+  const realUnitCpWithoutPrereqs = await req('/progress/checkpoint', {
+    token: tokB,
+    body: {
+      checkpointId: 'checkpoint-pre-a1-1',
+      xp: 50000,
+      submissions: [
+        { lessonId: 'hello', exerciseIndex: 0, choice: lessons[0].questions[0][2] },
+        { lessonId: 'everyday', exerciseIndex: 0, choice: lessons[1].questions[0][2] },
+        { lessonId: 'sentences', exerciseIndex: 0, choice: lessons[2].questions[0][2] },
+        { lessonId: 'hello', exerciseIndex: 1, choice: lessons[0].questions[1][2] },
+        { lessonId: 'everyday', exerciseIndex: 1, choice: lessons[1].questions[1][2] }
+      ]
+    }
+  });
+  const afterFailCp = await req('/me', { token: tokB });
+  assert.equal(cheatCp.status, 400, 'Forged checkpointId must be rejected with 400');
+  assert.equal(realUnitCpWithoutPrereqs.status, 400, 'Checkpoint without completed unit lessons must be rejected with 400');
+  assert.equal(afterFailCp.data.progress.xp, startXp, 'Failed checkpoint attempt must not award XP');
+
+  // Complete unit 1 lessons for B, then complete checkpoint-pre-a1-1 with extra client xp tamper
+  for (let i = 0; i < 3; i++) {
+    const l = lessons[i];
+    const r = await req('/progress/lesson', { token: tokB, body: { lesson: l.id, answers: l.questions.map(q => q[2]) } });
+    assert.equal(r.status, 200);
+  }
+  const preValidCpXp = (await req('/me', { token: tokB })).data.progress.xp;
+  const validCp = await req('/progress/checkpoint', {
+    token: tokB,
+    body: {
+      checkpointId: 'checkpoint-pre-a1-1',
+      xp: 99999,
+      correct: 99,
+      submissions: [
+        { lessonId: 'hello', exerciseIndex: 0, choice: lessons[0].questions[0][2] },
+        { lessonId: 'everyday', exerciseIndex: 0, choice: lessons[1].questions[0][2] },
+        { lessonId: 'sentences', exerciseIndex: 0, choice: lessons[2].questions[0][2] },
+        { lessonId: 'hello', exerciseIndex: 1, choice: lessons[0].questions[1][2] },
+        { lessonId: 'everyday', exerciseIndex: 1, choice: lessons[1].questions[1][2] }
+      ]
+    }
+  });
+  assert.equal(validCp.status, 200, 'Legitimate unit checkpoint completion must succeed');
+  assert.equal(validCp.data.earned, 40, 'Checkpoint XP must use canonical server value (40), ignoring client xp: 99999');
+  assert.equal(validCp.data.progress.xp, preValidCpXp + 40);
+  log('CHECKPOINT_XP_FORGE', false,
+    `forged=${cheatCp.status}, unprereq=${realUnitCpWithoutPrereqs.status}, legitEarned=${validCp.data.earned}`);
 
   // 4. AI Conversation client-forged history XP cheat
   const aiCheat = await req('/ai/conversation', {
