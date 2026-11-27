@@ -24,6 +24,7 @@ export default defineConfig({
     }),
   ].filter(Boolean),
   build: {
+    sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks(id) {
