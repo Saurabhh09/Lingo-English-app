@@ -1,6 +1,12 @@
 node_modules/
 dist/
 .env
-.env.local
+.env.*
+!.env.example
 .vercel
 npm-debug.log
+*.jks
+*.keystore
+keystore.properties
+*.p12
+*.pem

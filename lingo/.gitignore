@@ -8,3 +8,8 @@ data.json
 data.json.tmp
 tests/*.png
 test-results/
+*.jks
+*.keystore
+keystore.properties
+*.p12
+*.pem
