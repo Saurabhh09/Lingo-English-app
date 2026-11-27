@@ -157,16 +157,22 @@ export async function sendAIConversationTurn({
     throw err;
   }
 
-  const safeHistory = Array.isArray(history) ? history.slice(-20) : [];
-  const starterPrompt = (safeHistory[0]?.role === 'assistant' && safeHistory[0]?.content) ? safeHistory[0].content : '';
+  const safeHistory = Array.isArray(history)
+    ? history
+        .slice(-12)
+        .filter(t => t && ['user', 'assistant'].includes(t.role) && typeof t.content === 'string' && t.content.trim())
+        .map(t => ({ role: t.role, content: t.content.trim().slice(0, 600) }))
+    : [];
+  const allowedLevels = new Set(['Pre-A1', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2']);
+  const safeLevel = allowedLevels.has(level) ? level : 'B1';
 
   const systemInstruction = `
 You are Lingo's AI English Conversation Tutor.
 Role & Persona: ${aiPersona}
 Scenario Context: ${scenario}
-Learner CEFR Level: ${level}${starterPrompt ? `\nScenario Starter Prompt: "${starterPrompt}"` : ''}
+Learner CEFR Level: ${safeLevel}
 
-Pedagogical Guidelines for CEFR ${level}:
+Pedagogical Guidelines for CEFR ${safeLevel}:
 1. Reply naturally in character, keeping your answer concise (1–3 sentences) and vocabulary appropriate for CEFR ${level}.
 2. Always output valid JSON conforming strictly to this schema:
 {
@@ -243,7 +249,7 @@ async function callGeminiAPI({ apiKey, model, systemInstruction, userMessage, hi
           generationConfig: {
             responseMimeType: 'application/json',
             temperature: 0.7,
-            maxOutputTokens: 600
+            maxOutputTokens: 450
           }
         })
       });
@@ -343,7 +349,7 @@ async function callOpenAIAPI({ apiKey, model, systemInstruction, userMessage, hi
           messages,
           response_format: { type: 'json_object' },
           temperature: 0.7,
-          max_tokens: 600
+          max_tokens: 450
         })
       });
 

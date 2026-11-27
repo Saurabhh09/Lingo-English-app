@@ -804,25 +804,56 @@ app.post('/api/practice/pronunciation/submit', route(async (req, res) => {
     });
   });
 }));
+const aiBurstRate = new Map();
+function checkAiBurstRate(username) {
+  const t = Date.now();
+  const prev = (aiBurstRate.get(username) || []).filter(x => t - x < 60000);
+  if (prev.length >= 15) return false;
+  prev.push(t);
+  aiBurstRate.set(username, prev);
+  return true;
+}
+
 app.post('/api/ai/conversation', route(async (req, res) => {
-  const { scenarioId, userMessage, history, level, allowFallback = true } = req.body;
+  const { scenarioId, userMessage, history, level, allowFallback = true } = req.body || {};
+  if (typeof scenarioId !== 'string' || !scenarioId.trim()) {
+    fail('A valid scenarioId is required.', 400);
+  }
+  const scenario = CONVERSATION_SCENARIOS.find(s => s.id === scenarioId);
+  if (!scenario) {
+    fail('Conversation scenario not found.', 400);
+  }
   if (!userMessage || typeof userMessage !== 'string' || !userMessage.trim()) {
     fail('Message cannot be empty.', 400);
   }
   if (userMessage.length > 500) {
     fail('Message length exceeds maximum limit of 500 characters.', 400);
   }
+  if (history !== undefined && !Array.isArray(history)) {
+    fail('Conversation history must be an array.', 400);
+  }
+  if (!checkAiBurstRate(req.user.username)) {
+    fail('Too many AI conversation turns right now. Wait a minute before sending more.', 429);
+  }
 
-  const scenario = CONVERSATION_SCENARIOS.find(s => s.id === scenarioId) || CONVERSATION_SCENARIOS[0];
+  const sanitizedHistory = Array.isArray(history)
+    ? history
+        .slice(-12)
+        .filter(t => t && ['user', 'assistant'].includes(t.role) && typeof t.content === 'string' && t.content.trim())
+        .map(t => ({ role: t.role, content: t.content.trim().slice(0, 600) }))
+    : [];
+
   let turnResult;
+  const ALLOWED_CEFR = new Set(['Pre-A1', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2']);
+  const safeLevel = ALLOWED_CEFR.has(level) ? level : scenario.level;
 
   try {
     turnResult = await sendAIConversationTurn({
       scenario: scenario.title + ' — ' + scenario.scenario,
       aiPersona: scenario.aiPersona,
-      level: level || scenario.level,
+      level: safeLevel,
       userMessage: userMessage.trim(),
-      history
+      history: sanitizedHistory
     });
   } catch (aiErr) {
     // If AI is unconfigured and fallback is disallowed, preserve HTTP 503 for tests
@@ -838,7 +869,7 @@ app.post('/api/ai/conversation', route(async (req, res) => {
     turnResult = generateGuidedFallbackResponse({
       scenarioId: scenario.id,
       userMessage: userMessage.trim(),
-      history,
+      history: sanitizedHistory,
       reason: reasonText
     });
   }
@@ -846,9 +877,22 @@ app.post('/api/ai/conversation', route(async (req, res) => {
   await locked(req.user.username, async () => {
     const p = await db.get('progress', req.user.username);
     if (!p.practice) p.practice = { listening: [], speaking: [], pronunciation: [], conversation: [] };
+    if (!Array.isArray(p.practice.conversation)) p.practice.conversation = [];
+    if (!p.practice.conversationTurns || typeof p.practice.conversationTurns !== 'object') {
+      p.practice.conversationTurns = {};
+    }
+    if (!p.practice.aiUsage || p.practice.aiUsage.date !== today()) {
+      p.practice.aiUsage = { date: today(), count: 0 };
+    }
+    if (p.practice.aiUsage.count >= 60) {
+      fail('Daily AI practice limit reached. Try again tomorrow.', 429);
+    }
+    p.practice.aiUsage.count += 1;
+    p.practice.conversationTurns[scenario.id] = (p.practice.conversationTurns[scenario.id] || 0) + 1;
+
     const fresh = !p.practice.conversation.includes(scenario.id);
     let earned = 0;
-    if (fresh && Array.isArray(history) && history.length >= 2) {
+    if (fresh && p.practice.conversationTurns[scenario.id] >= 2) {
       earned = 30;
       p.practice.conversation.push(scenario.id);
       p.xp += earned;
@@ -860,8 +904,8 @@ app.post('/api/ai/conversation', route(async (req, res) => {
       p.streak = p.lastStudy === today() ? p.streak : p.lastStudy === yesterday ? p.streak + 1 : 1;
       p.lastStudy = today();
       p.history[today()] = (p.history[today()] || 0) + 5;
-      await db.set('progress', req.user.username, p);
     }
+    await db.set('progress', req.user.username, p);
     res.json({
       ...turnResult,
       progress: p,
