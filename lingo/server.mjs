@@ -1449,6 +1449,11 @@ app.post('/api/games/join', route(async (req, res) => {
       fail('That game is not available to join.');
     }
     if (!g.members[req.user.username]) {
+      const socialState = await getSocialState();
+      const memberUsernames = Object.keys(g.members || {});
+      if (memberUsernames.some(mUser => mUser !== req.user.username && isBlockedBetween(socialState, req.user.username, mUser))) {
+        fail('You cannot join this game room.', 403);
+      }
       const activeCount = Object.values(g.members).filter(m => m.role !== 'spectator').length;
       const spectatorCount = Object.values(g.members).filter(m => m.role === 'spectator').length;
       const joinRole = (req.body.role === 'spectator' || req.body.metadata?.role === 'spectator') ? 'spectator' : 'player';
@@ -2218,6 +2223,11 @@ app.post('/api/social/blocks', route(async (req, res) => {
         gi.status = 'cancelled';
       }
     }
+    for (const ci of s.communityInvitations) {
+      if (ci.status === 'pending' && ((ci.inviterId === me && ci.inviteeId === target) || (ci.inviterId === target && ci.inviteeId === me))) {
+        ci.status = 'cancelled';
+      }
+    }
     await saveSocialState(s);
     res.json({ ok: true, blocked: true });
   });
@@ -2298,12 +2308,15 @@ app.get('/api/communities/:id', route(async (req, res) => {
     const me = req.user.username;
     const myMem = s.communityMembers.find(m => m.communityId === commId && m.userId === me);
     if (!myMem) fail('Access denied. This community is private.', 403);
+    if (comm.ownerId !== me && isBlockedBetween(s, me, comm.ownerId)) {
+      fail('You cannot view this community.', 403);
+    }
 
     const { accountsMap, progressMap } = await listAccountsAndProgress();
     const nowMs = now();
 
     const members = s.communityMembers
-      .filter(m => m.communityId === commId && accountsMap[m.userId])
+      .filter(m => m.communityId === commId && accountsMap[m.userId] && (m.userId === me || !isBlockedBetween(s, me, m.userId)))
       .map(m => ({
         ...buildPublicProfileCard(accountsMap[m.userId], progressMap[m.userId], s.presence, nowMs),
         role: m.role,
@@ -2413,7 +2426,7 @@ app.post('/api/communities/:id/invite', route(async (req, res) => {
     for (const rawU of (Array.isArray(usernames) ? usernames : [])) {
       const target = String(rawU || '').toLowerCase().trim();
       if (!target || target === me || !accountsMap[target]) continue;
-      if (isBlockedBetween(s, me, target)) continue;
+      if (isBlockedBetween(s, me, target) || isBlockedBetween(s, comm.ownerId, target)) continue;
       if (!areFriends(s, me, target)) continue;
       const alreadyMem = s.communityMembers.some(m => m.communityId === commId && m.userId === target);
       const alreadyInv = s.communityInvitations.some(i => i.communityId === commId && i.inviteeId === target && i.status === 'pending');
@@ -2464,6 +2477,11 @@ app.post('/api/communities/invitations/:invId/respond', route(async (req, res) =
       inv.status = 'expired';
       await saveSocialState(s);
       fail('This community no longer exists.', 404);
+    }
+    if (action === 'accept' && (isBlockedBetween(s, me, inv.inviterId) || isBlockedBetween(s, me, comm.ownerId))) {
+      inv.status = 'cancelled';
+      await saveSocialState(s);
+      fail('You cannot join this community.', 403);
     }
 
     const nowIso = new Date(now()).toISOString();
@@ -2648,7 +2666,7 @@ app.post('/api/games/:code/invite', route(async (req, res) => {
           if (target !== me) skippedCount++;
           continue;
         }
-        if (g.members[target] || isBlockedBetween(s, me, target)) {
+        if (g.members[target] || isBlockedBetween(s, me, target) || Object.keys(g.members || {}).some(mUser => isBlockedBetween(s, mUser, target))) {
           skippedCount++;
           continue;
         }
