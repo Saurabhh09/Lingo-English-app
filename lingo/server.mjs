@@ -1492,19 +1492,21 @@ app.post('/api/games/solo', route(async (req, res) => {
 
     await db.set('solo', req.user.username, soloGame);
 
-    const delay = Math.max(0, soloGame.countdownDeadline - now());
-    setTimeout(async () => {
-      try {
-        await locked('solo:' + req.user.username, async () => {
-          const cur = await db.get('solo', req.user.username);
-          if (cur && cur.status === 'countdown') {
-            await tickSolo(cur);
-          }
-        });
-      } catch (err) {
-        console.error('Solo countdown background transition error:', err.message);
-      }
-    }, delay);
+    if (!process.env.VERCEL) {
+      const delay = Math.max(0, soloGame.countdownDeadline - now());
+      setTimeout(async () => {
+        try {
+          await locked('solo:' + req.user.username, async () => {
+            const cur = await db.get('solo', req.user.username);
+            if (cur && cur.status === 'countdown') {
+              await tickSolo(cur);
+            }
+          });
+        } catch (err) {
+          console.error('Solo countdown background transition error:', err.message);
+        }
+      }, delay).unref?.();
+    }
 
     res.json(soloView(soloGame, req.user, currentTime));
   });
@@ -1794,19 +1796,21 @@ app.post('/api/games/:code/start', route(async (req, res) => {
     g.roundEnd = null;
     await db.set('games', g.code, g);
 
-    const delay = Math.max(0, g.countdownDeadline - now());
-    setTimeout(async () => {
-      try {
-        await locked('game:' + g.code, async () => {
-          const cur = await db.get('games', g.code);
-          if (cur && cur.status === 'countdown') {
-            await tick(cur);
-          }
-        });
-      } catch (err) {
-        console.error('Countdown background transition error:', err.message);
-      }
-    }, delay);
+    if (!process.env.VERCEL) {
+      const delay = Math.max(0, g.countdownDeadline - now());
+      setTimeout(async () => {
+        try {
+          await locked('game:' + g.code, async () => {
+            const cur = await db.get('games', g.code);
+            if (cur && cur.status === 'countdown') {
+              await tick(cur);
+            }
+          });
+        } catch (err) {
+          console.error('Countdown background transition error:', err.message);
+        }
+      }, delay).unref?.();
+    }
 
     res.json(view(g, req.user, currentTime));
   });
