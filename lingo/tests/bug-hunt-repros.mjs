@@ -55,9 +55,49 @@ try {
   const u2SidebarName = await page.locator('.web-sidebar-profile').textContent();
   console.log(`[CONFIRMED BUG] CUSTOM_NAME_LEAK_ON_SIGNOUT: User Two displays "${u2SidebarName.trim()}"`);
 
-  // Repro 3: Verify ErrorBoundary absence
-  const hasRoot = await page.locator('#root').evaluate(el => el.children.length > 0);
-  assert.ok(hasRoot);
+  // Repro 3: Verify ErrorBoundary catches runtime render crashes instead of leaving empty #root
+  const { createServer } = await import('vite');
+  const vite = await createServer({
+    root: new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'),
+    server: { port: 0, strictPort: false },
+    appType: 'custom',
+    logLevel: 'silent',
+    plugins: [
+      {
+        name: 'eb-crash-test',
+        configureServer(server) {
+          server.middlewares.use('/eb-crash.html', async (_req, res, next) => {
+            try {
+              const raw = `<!doctype html><html><body><div id="root"></div><script type="module">
+                import React from 'react';
+                import { createRoot } from 'react-dom/client';
+                import { ErrorBoundary } from '/src/components/ErrorBoundary.jsx';
+                function Bomb() { throw new Error('Simulated render crash'); }
+                createRoot(document.getElementById('root')).render(
+                  React.createElement(ErrorBoundary, null, React.createElement(Bomb))
+                );
+              </script></body></html>`;
+              const html = await server.transformIndexHtml('/eb-crash.html', raw);
+              res.setHeader('Content-Type', 'text/html');
+              res.end(html);
+            } catch (err) {
+              next(err);
+            }
+          });
+        }
+      }
+    ]
+  });
+  await vite.listen();
+  const ebPort = vite.httpServer.address().port;
+  const ebPage = await context.newPage();
+  await ebPage.goto(`http://127.0.0.1:${ebPort}/eb-crash.html`, { waitUntil: 'networkidle' });
+  await ebPage.locator('#root h1').waitFor({ state: 'visible', timeout: 10000 });
+  const fallbackTitle = await ebPage.locator('#root h1').textContent();
+  assert.equal(fallbackTitle?.trim(), 'Something went wrong', 'ErrorBoundary must render recovery UI on crash');
+  await ebPage.close();
+  await vite.close();
+  console.log('[FIXED     ] ERROR_BOUNDARY: Catch-all fallback renders cleanly');
 } finally {
   await browser?.close();
   await srv.stop();
