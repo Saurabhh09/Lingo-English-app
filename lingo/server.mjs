@@ -1243,8 +1243,25 @@ function getNextQuestion(g) {
     : pool;
   return candidates[Math.floor(Math.random() * candidates.length)];
 }
+const GAME_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const ROOM_IDLE_TTL_MS = 2 * 60 * 60 * 1000;
+function generateRoomCode() {
+  const bytes = randomBytes(6);
+  let out = '';
+  for (let i = 0; i < 6; i++) out += GAME_CODE_ALPHABET[bytes[i] % GAME_CODE_ALPHABET.length];
+  return out;
+}
+
 async function tick(g) {
   const currentTime = now();
+  if (g.status === 'waiting') {
+    const expired = g.expiresAt ? currentTime >= g.expiresAt : (g.created && (currentTime - g.created) >= ROOM_IDLE_TTL_MS);
+    if (expired) {
+      g.status = 'finished';
+      await db.set('games', g.code, g);
+    }
+    return;
+  }
   if (g.status === 'countdown') {
     if (g.countdownDeadline && currentTime >= g.countdownDeadline) {
       g.status = 'playing';
@@ -1544,7 +1561,7 @@ app.post('/api/games', route(async (req, res) => {
 
     const hostRole = (req.body.hostRole === 'spectator' || req.body.metadata?.hostRole === 'spectator') ? 'spectator' : 'player';
     let code;
-    do { code = randomBytes(4).toString('hex').slice(0, 6).toUpperCase(); } while (await db.get('games', code));
+    do { code = generateRoomCode(); } while (await db.get('games', code));
 
     let questions;
     if (isCustomTopic) {
@@ -1566,6 +1583,7 @@ app.post('/api/games', route(async (req, res) => {
       hostMem.questionOrder = generateShuffledOrder(questions.length);
     }
 
+    const createdAt = now();
     const g = {
       code,
       host: req.user.username,
@@ -1579,7 +1597,8 @@ app.post('/api/games', route(async (req, res) => {
       metadata: req.body.metadata || {},
       status: 'waiting',
       questionSource: questions[0]?.source || 'fallback',
-      created: now(),
+      created: createdAt,
+      expiresAt: createdAt + ROOM_IDLE_TTL_MS,
       countdownDeadline: null,
       startedAt: null,
       endsAt: null,
@@ -1594,7 +1613,13 @@ app.post('/api/games', route(async (req, res) => {
   });
 }));
 app.post('/api/games/join', route(async (req, res) => {
-  const code = normalizeCode(req.body.code);
+  if (!(await consumeRateLimit('game_join', `${req.user.username}:${req.ip || 'ip'}`, 15, 60000))) {
+    fail('Too many room join attempts. Wait a minute before trying again.', 429);
+  }
+  const code = normalizeCode(req.body?.code);
+  if (code.length !== 6) {
+    fail('Enter a valid 6-character game code.', 400);
+  }
   await locked('game:' + code, async () => {
     const g = await db.get('games', code);
     if (!g) fail('We couldn’t find that game. Double-check the code.', 404);
