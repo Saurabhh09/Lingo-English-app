@@ -902,53 +902,15 @@ function App() {
     window.scrollTo?.(0, 0);
   }
 
-  async function completeCheckpoint(checkpointId, xpReward, questionCount, correctCount) {
-    const passed = correctCount >= Math.ceil(questionCount * 0.6);
-    const existing = progress?.checkpoints || [];
-    const fresh = !existing.includes(checkpointId);
-    let earned = 0;
-    let nextProgress = progress;
-
-    if (passed) {
-      const updatedList = Array.from(new Set([...existing, checkpointId]));
+  async function completeCheckpoint(checkpointId, submissions) {
+    const res = await api('/progress/checkpoint', { checkpointId, submissions });
+    if (res?.progress) {
       try {
-        localStorage.setItem(checkpointStorageKey(user?.username), JSON.stringify(updatedList));
+        localStorage.setItem(checkpointStorageKey(user?.username), JSON.stringify(res.progress.checkpoints || []));
       } catch { }
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const yesterdayStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-      earned = fresh ? (xpReward || 40) : 0;
-      nextProgress = {
-        ...progress,
-        checkpoints: updatedList,
-        xp: (progress?.xp || 0) + earned,
-        words: (progress?.words || 0) + (fresh ? questionCount : 0),
-        todayWords: ((progress?.dailyDate === todayStr ? progress?.todayWords : 0) || 0) + (fresh ? questionCount : 0),
-        dailyDate: todayStr,
-        streak: progress?.lastStudy === todayStr ? progress.streak : progress?.lastStudy === yesterdayStr ? (progress.streak || 0) + 1 : Math.max(1, progress?.streak || 0),
-        lastStudy: todayStr,
-        history: {
-          ...(progress?.history || {}),
-          [todayStr]: ((progress?.history || {})[todayStr] || 0) + (fresh ? questionCount : 0)
-        }
-      };
-      applyProgress(nextProgress, user?.username, { detectNewBadges: false });
-
-      // Best-effort server sync if checkpoint endpoint is available
-      api('/progress/checkpoint', { checkpointId, correct: correctCount, total: questionCount, xp: xpReward || 40 })
-        .then(res => {
-          if (res?.progress) applyProgress(res.progress);
-        })
-        .catch(() => { });
+      applyProgress(res.progress, user?.username, { detectNewBadges: true });
     }
-
-    return {
-      progress: nextProgress,
-      correct: correctCount,
-      total: questionCount,
-      passed,
-      earned,
-      alreadyCompleted: !fresh
-    };
+    return res;
   }
 
   async function createGame(settings) {
@@ -2740,8 +2702,13 @@ function Lesson({ lesson, api, updateProgress, onCompleteCheckpoint, savedWords 
       setError('');
       try {
         if (curriculum.isCheckpoint && onCompleteCheckpoint) {
-          const correctCount = checkedResults.filter(Boolean).length;
-          const r = await onCompleteCheckpoint(curriculum.id, curriculum.xp || 40, exercises.length, correctCount);
+          const submissions = exercises.map((ex, idx) => ({
+            lessonId: ex.sourceLessonId,
+            exerciseIndex: ex.sourceExerciseIndex,
+            choice: a[idx],
+            exerciseId: ex.id
+          }));
+          const r = await onCompleteCheckpoint(curriculum.id, submissions);
           setResult(r);
           setStage('results');
           setLifecycle('completed');
