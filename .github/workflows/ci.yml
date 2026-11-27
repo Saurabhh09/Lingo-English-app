@@ -53,7 +53,7 @@ jobs:
         run: npm --prefix lingo audit --audit-level=high
 
       - name: Install Playwright Chromium
-        run: npx --prefix lingo playwright install chromium
+        run: npm --prefix lingo exec -- playwright install chromium
 
       - name: Run isolated security, bug-repro, social, reward, load, and UI suites
         env:
@@ -80,13 +80,25 @@ jobs:
           PORT: '3000'
           DATA_PATH: /tmp/lingo-ci-data.json
         run: |
-          node --prefix lingo server.mjs &
+          node lingo/server.mjs &
           SRV_PID=$!
           trap "kill $SRV_PID || true" EXIT
+          READY=0
           for i in $(seq 1 40); do
-            if curl -sf http://127.0.0.1:3000/api/health >/dev/null; then break; fi
+            if ! kill -0 "$SRV_PID" 2>/dev/null; then
+              echo "Server process exited early" >&2
+              exit 1
+            fi
+            if curl -sf http://127.0.0.1:3000/api/health >/dev/null; then
+              READY=1
+              break
+            fi
             sleep 0.25
           done
+          if [ "$READY" -ne 1 ]; then
+            echo "Server failed to become ready on :3000/api/health" >&2
+            exit 1
+          fi
           npm --prefix lingo run test:api
           npm --prefix lingo run test:curriculum
           npm --prefix lingo run test:phase10
