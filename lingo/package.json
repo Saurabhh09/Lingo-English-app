@@ -29,7 +29,8 @@
     "test:phase3-audit": "node tests/phase3-acceptance.mjs",
     "test:phase4": "node tests/phase4-llm-questions.mjs",
     "test:phase5": "node tests/phase5-multiplayer-sync.mjs",
-    "test:phase5-ui": "node tests/phase5-friends-ui.mjs"
+    "test:phase5-ui": "node tests/phase5-friends-ui.mjs",
+    "test:native-scroll": "node tests/native-scroll.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.6.10",

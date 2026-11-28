@@ -9,23 +9,26 @@ body {
   overscroll-behavior-y: contain;
 }
 
-/* Native Android WebView Scroll Fix: prevent overflow-x:hidden from trapping vertical touch scroll */
-html[data-platform='native'],
+/* Native Android WebView Scroll Fix: keep viewport as scroll container */
+html[data-platform='native'] {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: auto;
+}
+
 html[data-platform='native'] body {
-  overflow-x: clip !important;
-  overflow-y: auto !important;
-  height: auto !important;
+  overflow: visible !important;
+  overscroll-behavior-y: auto;
+  height: auto;
   min-height: 100dvh;
-  touch-action: pan-y;
 }
 
 html[data-platform='native'] #root,
 html[data-platform='native'] .app-shell,
 html[data-platform='native'] .workspace,
 html[data-platform='native'] main {
-  overflow-x: clip !important;
-  overflow-y: visible !important;
-  height: auto !important;
+  overflow: visible !important;
+  height: auto;
 }
 
 .mobile-nav-btn.locked,
@@ -149,6 +152,7 @@ html[data-platform='native'] .solo-countdown-overlay {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   *,
   *::before,
   *::after {
