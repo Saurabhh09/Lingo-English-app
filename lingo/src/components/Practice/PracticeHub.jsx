@@ -33,6 +33,7 @@ export function PracticeHub({ progress, updateProgress, api }) {
     setError('');
     fetchWithSWR('practice:catalog', () => api('/practice/catalog'), {
       maxAgeMs: 10 * 60 * 1000,
+      staleWhileRevalidate: true,
       forceRefresh
     })
       .then(data => {

@@ -127,7 +127,30 @@ const supabase = connected ? createClient(process.env.SUPABASE_URL, process.env.
 const dataPath = (process.env.NODE_ENV !== 'production' && process.env.DATA_PATH) ? path.resolve(process.env.DATA_PATH) : path.join(root, 'data.json');
 let local = fs.existsSync(dataPath) ? JSON.parse(fs.readFileSync(dataPath, 'utf8')) : { accounts: {}, sessions: {}, progress: {}, games: {}, solo: {} };
 if (!local.solo) local.solo = {};
-const db = { async get(table, id) { if (!supabase) return structuredClone(local[table]?.[id] || null); const { data, error } = await supabase.from('lingo_' + table).select('payload').eq('id', id).maybeSingle(); if (error) throw Error('Database is not ready. Apply supabase/schema.sql.'); return data?.payload || null; }, async set(table, id, payload) { if (supabase) { const { error } = await supabase.from('lingo_' + table).upsert({ id, payload }); if (error) throw Error('Database write failed. Check your Supabase setup.'); } else { if (!local[table]) local[table] = {}; local[table][id] = structuredClone(payload); try { fs.writeFileSync(dataPath + '.tmp', JSON.stringify(local)); fs.renameSync(dataPath + '.tmp', dataPath); } catch { fs.writeFileSync(dataPath, JSON.stringify(local)); } } }, async del(table, id) { if (supabase) { const { error } = await supabase.from('lingo_' + table).delete().eq('id', id); if (error) throw error; } else { if (local[table]) delete local[table][id]; fs.writeFileSync(dataPath, JSON.stringify(local)); } } };
+const AUTH_CACHE_TTL_MS = 15000;
+const AUTH_CACHE_TABLES = new Set(['sessions', 'accounts']);
+const authMemCache = { sessions: new Map(), accounts: new Map() };
+function getAuthCache(table, id) {
+  const m = authMemCache[table];
+  if (!m) return undefined;
+  const entry = m.get(id);
+  if (!entry) return undefined;
+  if (Date.now() - entry.ts > AUTH_CACHE_TTL_MS) {
+    m.delete(id);
+    return undefined;
+  }
+  return structuredClone(entry.val);
+}
+function setAuthCache(table, id, val) {
+  const m = authMemCache[table];
+  if (!m) return;
+  if (m.size > 500) m.clear();
+  m.set(id, { ts: Date.now(), val: structuredClone(val) });
+}
+function delAuthCache(table, id) {
+  authMemCache[table]?.delete(id);
+}
+const db = { async get(table, id) { if (!supabase) return structuredClone(local[table]?.[id] || null); if (AUTH_CACHE_TABLES.has(table)) { const cached = getAuthCache(table, id); if (cached !== undefined) return cached; } const { data, error } = await supabase.from('lingo_' + table).select('payload').eq('id', id).maybeSingle(); if (error) throw Error('Database is not ready. Apply supabase/schema.sql.'); const val = data?.payload || null; if (AUTH_CACHE_TABLES.has(table) && val) setAuthCache(table, id, val); return val; }, async set(table, id, payload) { if (supabase) { const { error } = await supabase.from('lingo_' + table).upsert({ id, payload }); if (error) throw Error('Database write failed. Check your Supabase setup.'); if (AUTH_CACHE_TABLES.has(table)) setAuthCache(table, id, payload); } else { if (!local[table]) local[table] = {}; local[table][id] = structuredClone(payload); try { fs.writeFileSync(dataPath + '.tmp', JSON.stringify(local)); fs.renameSync(dataPath + '.tmp', dataPath); } catch { fs.writeFileSync(dataPath, JSON.stringify(local)); } } }, async del(table, id) { if (supabase) { const { error } = await supabase.from('lingo_' + table).delete().eq('id', id); if (error) throw error; if (AUTH_CACHE_TABLES.has(table)) delAuthCache(table, id); } else { if (local[table]) delete local[table][id]; fs.writeFileSync(dataPath, JSON.stringify(local)); } } };
 const SOCIAL_STATE_ID = '__lingo_social_state__';
 async function getSocialState() {
   const raw = await db.get('progress', SOCIAL_STATE_ID);
@@ -764,6 +787,9 @@ app.post('/api/rewards/:id/claim', route(async (req, res) => {
   });
 }));
 async function revokeAllUserSessions(username) {
+  for (const [k, entry] of authMemCache.sessions.entries()) {
+    if (entry?.val?.username === username) authMemCache.sessions.delete(k);
+  }
   if (supabase) {
     await supabase.from('lingo_sessions').delete().eq('payload->>username', username);
     return;

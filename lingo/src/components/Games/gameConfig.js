@@ -190,7 +190,7 @@ export const DEFAULT_GAME_CONFIG = {
  */
 export const LIMITS = {
   CUSTOM_TOPIC_MIN_LEN: 2,
-  CUSTOM_TOPIC_MAX_LEN: 50,
+  CUSTOM_TOPIC_MAX_LEN: 250,
   CUSTOM_DURATION_MIN: 1,
   CUSTOM_DURATION_MAX: 60,
   CUSTOM_QUESTIONS_MIN: 3,
@@ -222,7 +222,7 @@ export function validateCustomTopic(topic) {
     };
   }
   // Sanity check: allow letters, numbers, spaces, and safe punctuation
-  if (!/^[\p{L}\p{N}\s\-.,'’&!?:()]+$/u.test(trimmed)) {
+  if (!/^[\p{L}\p{N}\s\-.,'’"“”&!?:;()+/]+$/u.test(trimmed)) {
     return {
       valid: false,
       error: 'Topic contains special symbols that are not supported.',

@@ -275,8 +275,8 @@ function App() {
 
   const isNative = isNativeUI();
 
-  async function api(url, body, method) {
-    return requestApi(url, { body, method, token: token.current });
+  async function api(url, body, method, opts = {}) {
+    return requestApi(url, { body, method, token: token.current, ...opts });
   }
 
   const adopt = d => {
@@ -456,6 +456,18 @@ function App() {
             })
             .catch(() => { });
           refreshSocial(d.user?.username).catch(() => { });
+          fetchWithSWR('practice:catalog', () => api('/practice/catalog'), {
+            maxAgeMs: 10 * 60 * 1000,
+            staleWhileRevalidate: true
+          }).catch(() => { });
+          const nextWarmLesson = lessons.find(l => !(mergedProg?.completed || []).includes(l.id)) || lessons[0];
+          if (nextWarmLesson?.id) {
+            fetchWithSWR(
+              `lesson:${nextWarmLesson.id}`,
+              () => api('/curriculum/lessons/' + encodeURIComponent(nextWarmLesson.id)),
+              { maxAgeMs: 15 * 60 * 1000, staleWhileRevalidate: true }
+            ).catch(() => { });
+          }
         }
         try {
           const params = new URLSearchParams(window.location.search);
@@ -685,7 +697,10 @@ function App() {
   useEffect(() => {
     if (!game || game.status === 'finished') return;
     let cancel = false;
+    let inFlight = false;
     const update = async () => {
+      if (inFlight || cancel) return;
+      inFlight = true;
       try {
         const endpoint = game.mode === 'solo' ? '/games/solo' : '/games/' + game.code;
         const g = await api(endpoint);
@@ -700,14 +715,25 @@ function App() {
             console.warn('Transient polling error:', e);
           }
         }
+      } finally {
+        inFlight = false;
       }
     };
     const i = setInterval(update, 1200);
+    let countdownTimer = null;
+    if (game.status === 'countdown' && game.countdownDeadline) {
+      const clockOffset = (game.serverTime && game.clientReceivedAt)
+        ? (game.serverTime - game.clientReceivedAt)
+        : 0;
+      const msUntilEnd = Math.max(50, game.countdownDeadline - (Date.now() + clockOffset) + 120);
+      countdownTimer = setTimeout(update, msUntilEnd);
+    }
     return () => {
       cancel = true;
       clearInterval(i);
+      if (countdownTimer) clearTimeout(countdownTimer);
     };
-  }, [game?.code, game?.mode, game?.status]);
+  }, [game?.code, game?.mode, game?.status, game?.countdownDeadline]);
 
   useEffect(() => {
     if (!user) {
@@ -918,12 +944,12 @@ function App() {
     setBusy(true);
     try {
       if (settings.metadata?.mode === 'solo' || settings.mode === 'solo') {
-        const g = await api('/games/solo', settings);
+        const g = await api('/games/solo', settings, undefined, { timeoutMs: 30000 });
         setGame(g);
         safeSetStorage('lingo-solo', 'true');
         notify('Solo challenge starting in 10 seconds!');
       } else {
-        const g = await api('/games', settings);
+        const g = await api('/games', settings, undefined, { timeoutMs: 30000 });
         let finalGame = g;
         let invitedMsg = 'Your room is ready. Invite a friend!';
         if (pendingChallengeTarget?.username) {
@@ -2585,6 +2611,7 @@ function Lesson({ lesson, api, updateProgress, onCompleteCheckpoint, savedWords 
   const [error, setError] = useState('');
   const [lifecycle, setLifecycle] = useState('loading');
   const [attemptSeq, setAttemptSeq] = useState(0);
+  const [reloadSeq, setReloadSeq] = useState(0);
   const practiceStartRef = useRef(Date.now());
   const exerciseStartRef = useRef(Date.now());
   const exerciseTimesRef = useRef([]);
@@ -2689,7 +2716,7 @@ function Lesson({ lesson, api, updateProgress, onCompleteCheckpoint, savedWords 
     fetchWithSWR(
       `lesson:${targetId}`,
       () => api('/curriculum/lessons/' + encodeURIComponent(targetId)),
-      { maxAgeMs: 15 * 60 * 1000 }
+      { maxAgeMs: 15 * 60 * 1000, staleWhileRevalidate: true, forceRefresh: reloadSeq > 0 }
     )
       .then(data => {
         if (!active) return;
@@ -2712,7 +2739,7 @@ function Lesson({ lesson, api, updateProgress, onCompleteCheckpoint, savedWords 
       });
 
     return () => { active = false; };
-  }, [lesson.id, lesson.realLessonId, lesson.isCheckpoint]);
+  }, [lesson.id, lesson.realLessonId, lesson.isCheckpoint, reloadSeq]);
 
   const exercises = curriculum?.exercises || [];
   const currentEx = exercises[index] || (lesson?.questions ? { prompt: lesson.questions[index]?.[0], options: lesson.questions[index]?.[1], explanation: lesson.questions[index]?.[3] } : null);
@@ -2767,7 +2794,10 @@ function Lesson({ lesson, api, updateProgress, onCompleteCheckpoint, savedWords 
         <div className="celebration"><span>✦</span><Leaf size={48} /><span>✧</span></div>
         <h2>We hit a little bump.</h2>
         <p>{apiError || 'Could not load lesson content.'}</p>
-        <button className="button primary full-width" onClick={close}>Back to my journey</button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
+          <button className="button primary full-width" onClick={() => setReloadSeq(s => s + 1)}>Try again</button>
+          <button className="button secondary full-width" onClick={close}>Back to my journey</button>
+        </div>
       </div>
     );
   }

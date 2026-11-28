@@ -123,7 +123,7 @@ async function getNativePlugin() {
   if (!isNativePlatform()) return null;
   if (!nativePluginPromise) {
     nativePluginPromise = import('@capacitor/local-notifications')
-      .then(mod => mod?.LocalNotifications || null)
+      .then(mod => (mod?.LocalNotifications ? { plugin: mod.LocalNotifications } : null))
       .catch(() => null);
   }
   return nativePluginPromise;
@@ -172,7 +172,7 @@ async function hasNativeGrantOrRequest(native, { allowRequest = false } = {}) {
 }
 
 export async function getDeviceNotificationPermissionState() {
-  const native = await getNativePlugin();
+  const native = (await getNativePlugin())?.plugin || null;
   if (native) {
     try {
       const res = await native.checkPermissions();
@@ -188,7 +188,7 @@ export async function getDeviceNotificationPermissionState() {
 }
 
 export async function requestDeviceNotificationPermission() {
-  const native = await getNativePlugin();
+  const native = (await getNativePlugin())?.plugin || null;
   if (native) {
     try {
       const res = await native.requestPermissions();
@@ -211,7 +211,7 @@ export async function requestDeviceNotificationPermission() {
 
 export async function ensureDeviceNotificationSetup({ onAction } = {}) {
   const prefs = getNotificationPrefs();
-  const native = await getNativePlugin();
+  const native = (await getNativePlugin())?.plugin || null;
   if (native) {
     try {
       let perm = await native.checkPermissions();
@@ -241,7 +241,7 @@ export async function dispatchDeviceNotification({ uniqueKey, title, body, chann
   const seen = getDeliveredIdSet();
   if (uniqueKey && seen.has(uniqueKey)) return false;
 
-  const native = await getNativePlugin();
+  const native = (await getNativePlugin())?.plugin || null;
   if (native) {
     try {
       const granted = await hasNativeGrantOrRequest(native, { allowRequest: false });
@@ -320,7 +320,7 @@ export async function deliverAppNotificationsToDevice(notifications = [], myUser
     return 0;
   }
 
-  const native = await getNativePlugin();
+  const native = (await getNativePlugin())?.plugin || null;
   if (native) {
     const granted = await hasNativeGrantOrRequest(native, { allowRequest: false });
     if (!granted) {
@@ -428,7 +428,7 @@ export async function syncDailyDeviceReminders({ user, progress }) {
   const prefs = getNotificationPrefs();
   const reminders = buildPersonalizedDailyReminders({ user, progress });
 
-  const native = await getNativePlugin();
+  const native = (await getNativePlugin())?.plugin || null;
   if (native) {
     try {
       await native.cancel({

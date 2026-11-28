@@ -463,9 +463,9 @@ export function GamesSetup({ busy, createGame, joinGame, challengeFriend = null,
                         </div>
 
                         <div className="custom-input-box">
-                          <input
+                          <textarea
                             id="custom-topic-input"
-                            type="text"
+                            rows={3}
                             placeholder="e.g. Medical English, Tech Startups, Travel in Tokyo, Job Interview..."
                             value={config.customTopic}
                             maxLength={LIMITS.CUSTOM_TOPIC_MAX_LEN}

@@ -33,7 +33,7 @@ try {
   const page = await context.newPage();
   const cdp = await context.newCDPSession(page);
 
-  await page.goto(`${srv.baseUrl}/?platform=native`, { waitUntil: 'networkidle' });
+  await page.goto(`${srv.baseUrl}/?platform=native`, { waitUntil: 'domcontentloaded' });
   await page.locator('[data-testid="nav-home"]').waitFor({ state: 'visible', timeout: 15000 });
 
   const platformAttr = await page.evaluate(() => document.documentElement.getAttribute('data-platform'));

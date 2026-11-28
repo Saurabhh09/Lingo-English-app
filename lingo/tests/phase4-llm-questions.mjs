@@ -89,9 +89,9 @@ assert.ok(!sanitized.includes('<script>'), 'Delimiters and HTML tags must be str
 assert.ok(!sanitized.includes('{'), 'Braces must be stripped');
 assert.ok(sanitized.startsWith('Space exploration'), 'Core subject matter preserved');
 
-// Length limit (max 80 chars)
-const longTopic = 'A'.repeat(120);
-assert.ok(sanitizeTopicInput(longTopic).length <= 80, 'Custom topic must be capped at 80 chars');
+// Length limit (max 250 chars)
+const longTopic = 'A'.repeat(300);
+assert.ok(sanitizeTopicInput(longTopic).length <= 250, 'Custom topic must be capped at 250 chars');
 console.log('PASS 1.3: Preset topics and custom topics with prompt injection sanitization verified');
 
 // 4. Allowed duration range (1 to 60m) and question count range (3 to 50)

@@ -45,6 +45,8 @@ export function normalizeCEFRLevel(level) {
   return 'B1';
 }
 
+export const MAX_CUSTOM_TOPIC_LEN = 250;
+
 // Sanitize user-provided topic to prevent prompt injection and formatting breakage
 export function sanitizeTopicInput(topic) {
   if (typeof topic !== 'string') return 'Mixed English';
@@ -56,7 +58,7 @@ export function sanitizeTopicInput(topic) {
     .trim();
 
   if (!sanitized) sanitized = 'Mixed English';
-  return sanitized.slice(0, 80);
+  return sanitized.slice(0, MAX_CUSTOM_TOPIC_LEN);
 }
 
 // Validate configuration parameters on the server
@@ -190,6 +192,11 @@ export function validateQuestionSet(rawQuestions, expectedCount, cefrLevel, topi
   }
 
   if (validated.length < expectedCount) {
+    if (validated.length >= Math.max(1, expectedCount - 2)) {
+      const needed = expectedCount - validated.length;
+      const pad = generateCuratedFallbackQuestions({ cefrLevel, topic, questionCount: needed, reason: 'PARTIAL_AI_PAD' });
+      return [...validated, ...pad].slice(0, expectedCount);
+    }
     throw new Error(`Insufficient valid questions generated: received ${validated.length} of ${expectedCount} requested.`);
   }
 
@@ -199,9 +206,10 @@ export function validateQuestionSet(rawQuestions, expectedCount, cefrLevel, topi
 // Construct the secure system instruction and user prompt
 export function buildPrompt({ cefrLevel, topic, questionCount }) {
   const guideline = CEFR_PROMPT_GUIDELINES[cefrLevel] || CEFR_PROMPT_GUIDELINES['B1'];
+  const requestCount = Math.min(MAX_QUESTION_COUNT + 2, questionCount + 2);
 
   const systemInstruction = `You are Lingo's expert English pedagogical AI question generator.
-Your objective is to generate exactly ${questionCount} high-quality, CEFR-aligned multiple-choice questions for English language learners.
+Your objective is to generate ${requestCount} high-quality, CEFR-aligned multiple-choice questions for English language learners (at least ${questionCount} valid items).
 
 CEFR Level: ${cefrLevel}
 Level Guideline: ${guideline}
@@ -287,7 +295,8 @@ async function callGeminiForQuestions({ apiKey, model, systemInstruction, userMe
         generationConfig: {
           responseMimeType: 'application/json',
           temperature: 0.7,
-          maxOutputTokens: 8192
+          maxOutputTokens: 8192,
+          ...(String(model).includes('2.5') ? { thinkingConfig: { thinkingBudget: 0 } } : {})
         }
       })
     });
@@ -495,7 +504,7 @@ export async function generateQuestionSet(config, options = {}) {
           model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
           systemInstruction,
           userMessage,
-          timeoutMs: options.timeoutMs || 15000
+          timeoutMs: options.timeoutMs || 12000
         });
       } else if (openaiKey) {
         rawResponseText = await callOpenAIForQuestions({
@@ -503,7 +512,7 @@ export async function generateQuestionSet(config, options = {}) {
           model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
           systemInstruction,
           userMessage,
-          timeoutMs: options.timeoutMs || 15000
+          timeoutMs: options.timeoutMs || 12000
         });
       }
 

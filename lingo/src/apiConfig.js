@@ -40,79 +40,107 @@ function getClientTimezone() {
 export async function requestApi(path, { body, method, token, timeoutMs = 15000 } = {}) {
   const cleanPath = path.startsWith('/api') ? path : '/api' + (path.startsWith('/') ? path : '/' + path);
   const fullUrl = getApiUrl(cleanPath);
+  const httpMethod = (method || (body !== undefined ? 'POST' : 'GET')).toUpperCase();
+  const hasBody = body !== undefined && httpMethod !== 'GET' && httpMethod !== 'HEAD';
   const headers = {
-    'Content-Type': 'application/json',
+    ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
     'X-Timezone': getClientTimezone(),
     ...(token ? { Authorization: 'Bearer ' + token } : {})
   };
-  const httpMethod = method || (body ? 'POST' : 'GET');
+  const maxAttempts = httpMethod === 'GET' ? 2 : 1;
 
-  if (isNativePlatform()) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (isNativePlatform() && fullUrl.startsWith('http')) {
+      try {
+        const reqOpts = {
+          url: fullUrl,
+          method: httpMethod,
+          headers,
+          connectTimeout: Math.min(timeoutMs, 10000),
+          readTimeout: timeoutMs
+        };
+        if (hasBody) reqOpts.data = body;
+        const response = await CapacitorHttp.request(reqOpts);
+        let data = response.data || {};
+        if (typeof data === 'string') {
+          try {
+            data = JSON.parse(data);
+          } catch {
+            data = { error: data };
+          }
+        }
+        if (data.serverTime) data.clientReceivedAt = Date.now();
+        if (response.status >= 400) {
+          if (attempt < maxAttempts && response.status >= 502 && response.status <= 504) {
+            await new Promise(r => setTimeout(r, 250));
+            continue;
+          }
+          const err = new Error(data.error || 'Something went wrong. Please try again.');
+          err.status = response.status;
+          throw err;
+        }
+        return data;
+      } catch (e) {
+        if (e.status) throw e;
+        const msg = String(e?.message || '').toLowerCase();
+        if (msg.includes('timeout') || msg.includes('timed out')) {
+          if (attempt < maxAttempts) {
+            await new Promise(r => setTimeout(r, 250));
+            continue;
+          }
+          const timeoutErr = new Error('Request timed out. Please check your connection and try again.');
+          timeoutErr.status = 408;
+          throw timeoutErr;
+        }
+        console.warn('Native CapacitorHttp request failed, falling back to fetch:', e.message);
+      }
+    }
+
+    const fetchTimeoutMs = isNativePlatform() ? Math.min(timeoutMs, 8000) : timeoutMs;
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), fetchTimeoutMs) : null;
+    let r;
     try {
-      const response = await CapacitorHttp.request({
-        url: fullUrl,
+      r = await fetch(fullUrl, {
         method: httpMethod,
         headers,
-        data: body,
-        connectTimeout: Math.min(timeoutMs, 10000),
-        readTimeout: timeoutMs
+        ...(controller ? { signal: controller.signal } : {}),
+        ...(hasBody ? { body: JSON.stringify(body) } : {})
       });
-      let data = response.data || {};
-      if (typeof data === 'string') {
-        try {
-          data = JSON.parse(data);
-        } catch {
-          data = { error: data };
-        }
+    } catch (err) {
+      if (timer) clearTimeout(timer);
+      if (attempt < maxAttempts) {
+        await new Promise(r => setTimeout(r, 250));
+        continue;
       }
-      if (data.serverTime) data.clientReceivedAt = Date.now();
-      if (response.status >= 400) {
-        const err = new Error(data.error || 'Something went wrong. Please try again.');
-        err.status = response.status;
-        throw err;
+      if (err?.name === 'AbortError') {
+        const timeoutErr = new Error('Request timed out. Please check your connection and try again.');
+        timeoutErr.status = 408;
+        throw timeoutErr;
       }
-      return data;
-    } catch (e) {
-      if (e.status) throw e;
-      // Fallback to fetch if native call fails
-      console.warn('Native CapacitorHttp request failed, falling back to fetch:', e.message);
+      throw err;
+    } finally {
+      if (timer) clearTimeout(timer);
     }
-  }
 
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
-  let r;
-  try {
-    r = await fetch(fullUrl, {
-      method: httpMethod,
-      headers,
-      ...(controller ? { signal: controller.signal } : {}),
-      ...(body ? { body: JSON.stringify(body) } : {})
-    });
-  } catch (err) {
-    if (err?.name === 'AbortError') {
-      const timeoutErr = new Error('Request timed out. Please check your connection and try again.');
-      timeoutErr.status = 408;
-      throw timeoutErr;
+    const text = await r.text();
+    let data;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      data = { error: text || 'Unexpected response from server' };
     }
-    throw err;
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
 
-  const text = await r.text();
-  let data;
-  try {
-    data = text ? JSON.parse(text) : {};
-  } catch {
-    data = { error: text || 'Unexpected response from server' };
+    if (data.serverTime) data.clientReceivedAt = Date.now();
+    if (!r.ok) {
+      if (attempt < maxAttempts && r.status >= 502 && r.status <= 504) {
+        await new Promise(r => setTimeout(r, 250));
+        continue;
+      }
+      const err = new Error(data.error || 'Something went wrong. Please try again.');
+      err.status = r.status;
+      throw err;
+    }
+    return data;
   }
-
-  if (data.serverTime) data.clientReceivedAt = Date.now();
-  if (!r.ok) {
-    const err = new Error(data.error || 'Something went wrong. Please try again.');
-    err.status = r.status;
-    throw err;
-  }
-  return data;
 }
